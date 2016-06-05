@@ -23,13 +23,13 @@ let compile ppf filename =
   let backend = (module struct
     let symbol_for_global' = Compilenv.symbol_for_global'
     let closure_symbol = Compilenv.closure_symbol
-      
+
     let really_import_approx = Import_approx.really_import_approx
     let import_symbol = Import_approx.import_symbol
 
     let size_int = Arch.size_int
     let big_endian = Arch.big_endian
-      
+
     let max_sensible_number_of_arguments =
     (* The "-1" is to allow for a potential closure environment parameter. *)
       Proc.max_arguments_for_tailcalls - 1
@@ -78,9 +78,16 @@ let compile ppf filename =
       failwith "no .mli found"
     end in
 
+  let setup_location lb =
+    let open Lexing in
+    lb.lex_curr_p <- { lb.lex_curr_p with pos_fname = filename };
+    lb in
+
+
   let comp chan =
     let (size, lambda) = chan
       |> Lexing.from_channel
+      |> setup_location
       |> Sexp.read_sexp
       |> (fun s -> Format.printf "%a\n%!" Sexp.print_sexp s; s)
       |> Malfunction.parse_mod init_env in
@@ -98,10 +105,10 @@ let compile ppf filename =
         ~module_ident
         ~backend
         ~module_initializer:lam)
-    |> Asmgen.compile_implementation_flambda 
+    |> Asmgen.compile_implementation_flambda
         ~source_provenance prefixname ~backend ppf;
   in
-  try 
+  try
     Timings.time (Timings.Generate filename) comp (open_in filename);
     Compilenv.save_unit_info cmxfile;
     Warnings.check_fatal ();
@@ -115,14 +122,14 @@ let () =
   Compmisc.init_path true;
   try
     compile Format.std_formatter (Sys.argv.(1))
-  with 
+  with
     Sexp.SyntaxError ((locstart, locend), msg) ->
       let open Lexing in
       if locstart.pos_lnum = locend.pos_lnum then
-        Printf.fprintf stderr "%s:%d:%d-%d: %s\n%!" 
+        Printf.fprintf stderr "%s:%d:%d-%d: %s\n%!"
           locstart.pos_fname locstart.pos_lnum (locstart.pos_cnum - locstart.pos_bol) (locend.pos_cnum - locend.pos_bol) msg
       else
-        Printf.fprintf stderr "%s:%d:%d-%d:%d %s\n%!" 
+        Printf.fprintf stderr "%s:%d:%d-%d:%d %s\n%!"
           locstart.pos_fname locstart.pos_lnum (locstart.pos_cnum - locstart.pos_bol) locend.pos_lnum (locend.pos_cnum - locend.pos_bol) msg;
       exit 2
     | x ->

@@ -8,7 +8,7 @@ type unary_int_op =
   [`Neg | `Not]
 type binary_int_op =
   [ `Add | `Sub | `Mul | `Div | `Mod
-  | `And | `Or | `Xor | `Lsl | `Lsr | `Asr 
+  | `And | `Or | `Xor | `Lsl | `Lsr | `Asr
   | `Lt | `Gt | `Lte | `Gte | `Eq ]
 
 type sequence_type =
@@ -24,7 +24,7 @@ type t =
 | Mlet of binding list * t
 | Mconst of Lambda.structured_constant
 | Mglobal of Longident.t
-| Mswitch of t * cases
+| Mswitch of t * (case list * t) list
 
 (* Integers *)
 | Mintop1 of unary_int_op * inttype * t
@@ -44,9 +44,7 @@ and binding =
 | Named of Ident.t * t
 | Recursive of (Ident.t * t) list
 
-and cases = 
-  { tagcases : (int * t) list * t option;
-    intcases : (int * int * t) list }
+and case = [`Tag of int | `Deftag | `Intrange of int * int]
 (* Compiling from sexps *)
 
 let fail loc fmt =
@@ -90,14 +88,14 @@ let unary_intops_by_name, binary_intops_by_name =
       `Lt, "<" ; `Gt, ">" ; `Lte, "<=" ; `Gte, ">=" ; `Eq, "==" ] in
   let types = [`Unboxed, "" ; `Int32, "32" ; `Int64, "64"] in
   let () = (* check that all cases are handled here *)
-    List.iter (function #unary_int_op, _ -> () | _ -> assert false) unary_ops; 
+    List.iter (function #unary_int_op, _ -> () | _ -> assert false) unary_ops;
     List.iter (function #binary_int_op, _ -> () | _ -> assert false) binary_ops;
     List.iter (function #inttype, _ -> () | _ -> assert false) types in
-  List.fold_right (fun (ty,tyname) -> 
-    List.fold_right (fun (op,opname) -> 
+  List.fold_right (fun (ty,tyname) ->
+    List.fold_right (fun (op,opname) ->
       StrMap.add (opname ^ tyname) (op, ty)) unary_ops) types StrMap.empty,
-  List.fold_right (fun (ty,tyname) -> 
-    List.fold_right (fun (op,opname) -> 
+  List.fold_right (fun (ty,tyname) ->
+    List.fold_right (fun (op,opname) ->
       StrMap.add (opname ^ tyname) (op, ty)) binary_ops) types StrMap.empty
 
 let seqops_by_name op =
@@ -162,22 +160,27 @@ and parse_exp env (loc, sexp) = match sexp with
      Mlet (bindings, parse_exp env e)
 
   | List ((_, Atom "switch") :: exp :: cases) ->
-     let add_case cases (_, s) = match cases, s with
-       | { tagcases }, List [_, List ((_, Atom "tag") :: _) as tag; e] ->
-          let t = parse_tag tag in
-          if List.mem_assoc t tagcases then fail loc "Duplicate tag case %d" t;
-          { cases with tagcases = (t, parse_exp env e) :: tagcases } 
-       | { intcases }, List [_, Const (Const_base (Const_int n)); e] ->
-          if List.mem_assoc n intcases then fail loc "Duplicate case %d" n;
-          { cases with intcases = (n, parse_exp env e) :: intcases }
-       | { defcase = None }, List [_, Atom "default"; e] ->
-          { cases with defcase = Some (parse_exp env e) }
-       | { defcase = Some _ }, List [_, Atom "default"; e] ->
-          (* fail loc "Duplicate default cases" *)
-          cases (* HACK *)
-       | _, _ ->
-          fail loc "Parse error in switch" in
-     let cases = List.fold_left add_case { tagcases = []; intcases = []; defcase = None } cases in
+     let parse_selector = function
+       | _, List [_, Atom "tag"; _, Atom "_"] -> `Deftag
+       | _, List ([_, Atom "tag"; _]) as t -> `Tag (parse_tag t)
+       | _, Const (Const_base (Asttypes.Const_int n)) -> `Intrange (n, n)
+       | _, List [_, Const (Const_base (Asttypes.Const_int min));
+               _, Const (Const_base (Asttypes.Const_int max))] -> `Intrange (min, max)
+       | _, Atom "_" -> `Intrange (min_int, max_int)
+       | loc, _ -> fail loc "invalid selector" in
+
+     let rec parse_case loc acc = function
+       | [s; e] -> List.rev (parse_selector s :: acc), parse_exp env e
+       | (s :: c) -> parse_case loc (parse_selector s :: acc) c
+       | _ -> fail loc "invalid case" in
+
+     let cases = List.map (function
+       | loc, List c -> parse_case loc [] c
+       | loc, _ -> fail loc "invalid case") cases in
+
+     if (List.length (List.sort_uniq compare cases) <> List.length cases) then
+       fail loc "duplicate cases";
+
      Mswitch (parse_exp env exp, cases)
 
   | List [_, Atom s; e] when StrMap.mem s unary_intops_by_name ->
@@ -225,58 +228,184 @@ and parse_exp env (loc, sexp) = match sexp with
   | _ -> fail loc "syntax error"
 
 
-(* unfortunately, this is not exposed from matching.ml, so copy-paste *)
-module Switcher = Switch.Make (struct
-  type primitive = Lambda.primitive
+module IntSwitch = struct
 
-  let eqint = Pintcomp Ceq
-  let neint = Pintcomp Cneq
-  let leint = Pintcomp Cle
-  let ltint = Pintcomp Clt
-  let geint = Pintcomp Cge
-  let gtint = Pintcomp Cgt
+  (* Convert a list of possibly-overlapping intervals to a list of disjoint intervals *)
 
-  type act = Lambda.lambda
+  type action = int (* lower numbers more important *)
 
-  let make_prim p args = Lprim (p,args)
-  let make_offset arg n = match n with
-  | 0 -> arg
-  | _ -> Lprim (Poffsetint n,[arg])
+  (* cases is a sorted list
+     cases that begin lower appear first
+     when two cases begin together, more important appears first *)
 
-  let bind arg body =
-    let newvar,newarg = match arg with
-    | Lvar v -> v,arg
-    | _      ->
-        let newvar = Ident.create "switcher" in
-        newvar,Lvar newvar in
-    bind Alias newvar arg (body newarg)
-  let make_const i = Lconst (Const_base (Const_int i))
-  let make_isout h arg = Lprim (Pisout, [h ; arg])
-  let make_isin h arg = Lprim (Pnot,[make_isout h arg])
-  let make_if cond ifso ifnot = Lifthenelse (cond, ifso, ifnot)
-  let make_switch arg cases acts =
-    let l = ref [] in
-    for i = Array.length cases-1 downto 0 do
-      l := (i,acts.(cases.(i))) ::  !l
-    done ;
-    Lswitch(arg,
-            {sw_numconsts = Array.length cases ; sw_consts = !l ;
-             sw_numblocks = 0 ; sw_blocks =  []  ;
-             sw_failaction = None})
-  let make_catch d =
-    match d with
-    | Lstaticraise (i, []) -> i, (fun e -> e)
-    | _ ->
-       let i = next_raise_count () in
-       i, fun e -> Lstaticcatch(e, (i, []), d)
-  let make_exit i = Lstaticraise (i,[])
-end)
+  type case = int * int * action (* start position, end position, priority *)
+  type cases = case list (* sorted by start position then priority *)
+
+  (* the inactive list is a list of (endpoint, priority) pairs representing
+     intervals that we are currently inside, but are overridden by a more important one.
+     subsequent elements of the list have strictly higher priorities and strictly later endpoints *)
+  type inactive = (int * action) list
+
+  let rec insert_inactive max act = function
+    | [] -> [(max, act)]
+    | (max', act') as i' :: rest when act' < act ->
+       (* this interval should appear before the new one *)
+       i' ::
+         (if max' <= max then
+             (* new interval will never be active *)
+             rest
+          else
+             insert_inactive max act rest)
+
+    | (max', act') :: rest when max' <= max ->
+       assert (act < act');
+       (* this interval will is contained by the new one, so never becomes active *)
+       insert_inactive max act rest
+
+    | ov ->
+       (* new interval both more important and ends sooner, so prepend *)
+       (max, act) :: ov
+
+  type state =
+    | Hole (* not currently in any interval *)
+    | Interval of { (* in an interval... *)
+      s_entered : int; (* since this position *)
+      s_max : int; (* until here *)
+      s_act : action; (* with this action *)
+      s_inactive : inactive (* overriding these inactive intervals *)
+    }
+
+  let state_suc = function
+    | Hole -> failwith "state_suc of Hole undefined"
+    | Interval { s_inactive = [] } -> Hole
+    | Interval { s_max; s_inactive = (max', act') :: rest } ->
+       assert (s_max < max');
+       (* can compute i.s_max + 1 without overflow, because inactive interval ends later *)
+       Interval { s_entered = s_max + 1; s_max = max'; s_act = act';
+                  s_inactive = rest }
+
+  type result = case list (* may have duplicate actions, disjoint, sorted by position *)
+  let rec to_disjoint_intervals state cases : case list =
+    match state, cases with
+    | Hole, [] -> []
+
+    | Hole, ((min, max, act) :: cases) ->
+       to_disjoint_intervals (Interval { s_entered = min; s_max = max; s_act = act;
+                           s_inactive = [] }) cases
+    | Interval i, [] ->
+       (i.s_entered, i.s_max, i.s_act) :: to_disjoint_intervals (state_suc state) []
+
+    | Interval i, (((min, max, act) :: _) as cases) when i.s_max < min ->
+       (* active interval ends before this case begins *)
+       (i.s_entered, i.s_max, i.s_act) :: to_disjoint_intervals (state_suc state) cases
+
+    (* below here, we can assume min <= i.s_max: active interval overlaps current case *)
+    | Interval i, ((min, max, act) :: cases) when i.s_act < act ->
+       (* no change to active interval, but this case may become an inactive one *)
+       to_disjoint_intervals (Interval { i with s_inactive = insert_inactive max act i.s_inactive }) cases
+
+    | Interval i, ((min, max, act) :: cases) ->
+       (* new active interval, so old one becomes inactive *)
+       assert (i.s_entered <= min); assert (min <= i.s_max); assert (act < i.s_act);
+       let r =
+         if i.s_entered = min then
+           (* old interval was not active long enough to produce output *)
+           []
+         else
+           [(i.s_entered, min - 1, i.s_act)] in
+       r @ to_disjoint_intervals (Interval {
+         s_entered = min; s_max = max; s_act = act;
+         s_inactive = insert_inactive i.s_max i.s_act i.s_inactive}) cases
+
+
+  (* unfortunately, this is not exposed from matching.ml, so copy-paste *)
+  module Switcher = Switch.Make (struct
+    type primitive = Lambda.primitive
+
+    let eqint = Pintcomp Ceq
+    let neint = Pintcomp Cneq
+    let leint = Pintcomp Cle
+    let ltint = Pintcomp Clt
+    let geint = Pintcomp Cge
+    let gtint = Pintcomp Cgt
+
+    type act = Lambda.lambda
+
+    let make_prim p args = Lprim (p,args)
+    let make_offset arg n = match n with
+    | 0 -> arg
+    | _ -> Lprim (Poffsetint n,[arg])
+
+    let bind arg body =
+      let newvar,newarg = match arg with
+      | Lvar v -> v,arg
+      | _      ->
+          let newvar = Ident.create "switcher" in
+          newvar,Lvar newvar in
+      bind Alias newvar arg (body newarg)
+    let make_const i = Lconst (Const_base (Const_int i))
+    let make_isout h arg = Lprim (Pisout, [h ; arg])
+    let make_isin h arg = Lprim (Pnot,[make_isout h arg])
+    let make_if cond ifso ifnot = Lifthenelse (cond, ifso, ifnot)
+    let make_switch arg cases acts =
+      let l = ref [] in
+      for i = Array.length cases-1 downto 0 do
+        l := (i,acts.(cases.(i))) ::  !l
+      done ;
+      Lswitch(arg,
+              {sw_numconsts = Array.length cases ; sw_consts = !l ;
+               sw_numblocks = 0 ; sw_blocks =  []  ;
+               sw_failaction = None})
+    let make_catch d =
+      match d with
+      | Lstaticraise (i, []) -> i, (fun e -> e)
+      | _ ->
+         let i = next_raise_count () in
+         i, fun e -> Lstaticcatch(e, (i, []), d)
+    let make_exit i = Lstaticraise (i,[])
+  end)
+
+  let compile_int_switch scr overlapped_cases =
+    assert (overlapped_cases <> []);
+    let actions = Array.of_list (overlapped_cases |> List.map snd) in
+    let cases = overlapped_cases
+      |> List.mapi (fun idx (`Intrange (min, max), act) -> (min, max, idx))
+      |> List.stable_sort (fun (min, max, idx) (min', max', idx') -> compare min min')
+      |> to_disjoint_intervals Hole in
+    let occurrences = Array.make (Array.length actions) 0 in
+    let rec count_occurrences = function
+      | [] -> assert false
+      | [(min, max, act)] ->
+         occurrences.(act) <- occurrences.(act) + 1
+      | (min, max, act) :: (((min', max', act') :: _) as rest) ->
+         occurrences.(act) <- occurrences.(act) + 1;
+         begin if max + 1 <> min' then
+           (* When the interval list contains a hole, jump tables generated by
+              switch.ml may contain spurious references to action 0.
+              See PR#6805 *)
+           occurrences.(0) <- occurrences.(0) + 1
+         end;
+         count_occurrences rest in
+    count_occurrences cases;
+    let open Switch in
+    let store : Lambda.lambda t_store =
+      { act_get = (fun () ->
+          Array.copy actions);
+        act_get_shared = (fun () ->
+          actions |> Array.mapi (fun i act ->
+            if occurrences.(i) > 1 then Shared act else Single act));
+        act_store = (fun _ -> failwith "store unimplemented");
+        act_store_shared = (fun _ -> failwith "store_shared unimplemented") } in
+    let cases = Array.of_list cases in
+    let (low, _, _) = cases.(0) and (_, high, _) = cases.(Array.length cases - 1) in
+    Switcher.zyva (low, high) scr cases store
+end
 
 
 let rec to_lambda env = function
-  | Mvar v -> 
+  | Mvar v ->
      Lvar v
-  | Mlambda (params, e) -> 
+  | Mlambda (params, e) ->
      Lfunction {
        kind = Curried;
        params;
@@ -311,73 +440,61 @@ let rec to_lambda env = function
      let (path, _descr) = Env.lookup_value (* ~loc:(parse_loc loc) *) v env in
      Lambda.transl_path (* ~loc:(parse_loc loc) *) env path
   | Mswitch (scr, cases) ->
-     let switch_tag scr (tags, def) =
-       let numtags = match def with
-         | Some e -> max_tag
-         | None -> 1 + List.fold_left (fun s (i, e) -> max s i) (-1) tags in
-       Lswitch (scr, {
-         sw_numconsts = 0;
-         sw_consts = [];
-         sw_numblocks = numtags;
-         sw_blocks = List.map (fun (i, e) -> i, to_lambda env e) tags;
-         sw_failaction = match def with None -> None | Some e -> Some (to_lambda env e)
-       }) in
      let scr = to_lambda env scr in
-     let select int tag =
-       let id = Ident.create "switch" in
-       Llet (Strict, id, scr,
-             Lifthenelse
-               (Lprim (Pisint, [Lvar id]),
-                int (Lvar id),
-                tag (Lvar id))) in
-     begin match cases with
-     | { intcases = ([_, e], None) | ([], Some e); tagcases = [], None}
-     | { intcases = [], None; tagcases = ([_, e], None) | ([], Some e) } ->
-        (* only one case, don't bother testing *)
-        to_lambda env e
-     | { intcases = [0, ezero], None; tagcases = (([_, enz], None) | ([], Some enz)) }
-     | { intcases = [0, ezero], Some enz; tagcases = [], None } ->
-        (* two cases: 0 and something else, like with list or option types *)
-        Lifthenelse (scr, to_lambda env enz, to_lambda env ezero)
-     | { intcases ; tagcases = [], None } ->
-        (* switch on integers *)
-        switch_int scr intcases
-     | { intcases = [], None; tagcases } ->
-        (* switch on tags *)
-        switch_tag scr tagcases
-     | { intcases = ([_, eint], None) | ([], Some eint); 
-         tagcases = ([_, etag], None) | ([], Some etag) } ->
-        (* one int, one tag *)
-        select (fun _ -> to_lambda env eint) (fun _ -> to_lambda env etag)
-     | { intcases = ([_, eint], None) | ([], Some eint); tagcases } ->
-        (* one int, some tags *)
-        select (fun _ -> to_lambda env eint) (fun e -> switch_tag e tagcases)
-     | { intcases; tagcases = ([_, etag], None) | [], Some etag } ->
-        (* some ints, one tag *)
-        select (fun e -> switch_int e intcases) (fun _ -> to_lambda env etag)
-     | { intcases ; tagcases } ->
-        (* some ints, some tags *)
-        select (fun e -> switch_int e intcases) (fun e -> switch_tag e tagcases)
-     end
-(*
-
-     Lswitch (to_lambda env e, {
-       sw_numconsts = (* FIXME: explain *) 2 + List.fold_left (fun s (i, e) -> max s i) (-1) cases.intcases;
-       sw_consts = List.map (fun (i, e) -> (i, to_lambda env e)) cases.intcases;
-       sw_numblocks = max_tag;
-       sw_blocks = List.map (fun (i, e) -> (i, to_lambda env e)) cases.tagcases;
-       sw_failaction = match cases.defcase with None -> None | Some e -> Some (to_lambda env e)
-     })*)
+     let rec flatten acc = function
+       | ([], _) :: _ -> assert false
+       | ([sel], e) :: rest -> flatten ((sel, to_lambda env e) :: acc) rest
+       | (sels, e) :: rest ->
+          let i = next_raise_count () in
+          let cases = List.map (fun s -> s, Lstaticraise(i, [])) sels in
+          Lstaticcatch (flatten (cases @ acc) rest, (i, []), to_lambda env e)
+       | [] ->
+          let rec partition (ints, tags, deftag) = function
+            | [] -> (List.rev ints, List.rev tags, deftag)
+            | (`Tag _, _) as c :: cases -> partition (ints, c :: tags, deftag) cases
+            | (`Deftag, _) as c :: cases -> partition (ints, tags, Some c) cases
+            | (`Intrange _, _) as c :: cases -> partition (c :: ints, tags, deftag) cases in
+          let (intcases, tagcases, deftag) = partition ([],[],None) (List.rev acc) in
+          let id = Ident.create "switch" in
+          Llet (Strict, id, scr,
+            let scr = Lvar id in
+            let tagswitch = match tagcases, deftag with
+              | [], None -> None
+              | [_,e], None | [], Some (_, e) -> Some e
+              | tags, def ->
+                 let numtags = match def with
+                   | Some e -> max_tag
+                   | None -> 1 + List.fold_left (fun s (`Tag i, e) -> max s i) (-1) tags in
+                 Some (Lswitch (scr, {
+                   sw_numconsts = 0; sw_consts = []; sw_numblocks = numtags;
+                   sw_blocks = List.map (fun (`Tag i, e) -> i, e) tags;
+                   sw_failaction = match def with None -> None | Some (`Deftag,e) -> Some e
+                 })) in
+            let intswitch = match intcases with
+              | [] -> None
+              | [_,e] -> Some e
+              | ints -> Some (IntSwitch.compile_int_switch scr ints) in
+            match intswitch, tagswitch with
+            | None, None -> assert false
+            | None, Some e | Some e, None -> e
+            | Some eint, Some etag ->
+               Lifthenelse (Lprim (Pisint, [scr]), eint, etag)) in
+     (match cases with
+     | [[`Intrange (0, 0)], ezero; _, enonzero]
+     | [_, enonzero; [`Intrange (0, 0)], ezero] ->
+        (* special case comparisons with zero *)
+        Lifthenelse(scr, to_lambda env enonzero, to_lambda env ezero)
+     | cases -> flatten [] cases)
   | Mintop1 (op, ty, e) ->
      let e = to_lambda env e in
      let ones32 = Const_base (Asttypes.Const_int32 (Int32.of_int (-1))) in
      let ones64 = Const_base (Asttypes.Const_int64 (Int64.of_int (-1))) in
      let code = match op, ty with
-       | `Neg, `Unboxed -> Lprim (Pnegint, [e])
+       | `Neg, `Int -> Lprim (Pnegint, [e])
        | `Neg, `Int32 -> Lprim (Pnegbint Pint32, [e])
        | `Neg, `Int64 -> Lprim (Pnegbint Pint64, [e])
-       | `Not, `Unboxed -> Lprim (Pnot, [e])
-       | `Not, `Int32 -> 
+       | `Not, `Int -> Lprim (Pnot, [e])
+       | `Not, `Int32 ->
           Lprim (Pxorbint Pint32, [e; Lconst ones32])
        | `Not, `Int64 ->
           Lprim (Pxorbint Pint64, [e; Lconst ones64]) in
@@ -386,10 +503,10 @@ let rec to_lambda env = function
      let e1 = to_lambda env e1 in
      let e2 = to_lambda env e2 in
      let prim = match ty with
-       | `Unboxed ->
+       | `Int ->
           (match op with
-            `Add -> Paddint | `Sub -> Psubint 
-          | `Mul -> Pmulint | `Div -> Pdivint | `Mod -> Pmodint 
+            `Add -> Paddint | `Sub -> Psubint
+          | `Mul -> Pmulint | `Div -> Pdivint | `Mod -> Pmodint
           | `And -> Pandint | `Or -> Porint | `Xor -> Pxorint
           | `Lsl -> Plslint | `Lsr -> Plsrint | `Asr -> Pasrint
           | `Lt -> Pintcomp Clt | `Gt -> Pintcomp Cgt
@@ -407,9 +524,9 @@ let rec to_lambda env = function
           | `Eq -> Pbintcomp (t, Ceq)) in
      Lprim (prim, [e1; e2])
   | Mseqget (ty, seq, idx) ->
-     let prim = match ty with 
+     let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
-       | `Bytevec -> Pstringrefs 
+       | `Bytevec -> Pstringrefs
        | `Floatvec -> Parrayrefs Pfloatarray in
      Lprim (prim, [to_lambda env seq; to_lambda env idx])
   | Mseqset (ty, seq, idx, v) ->
@@ -431,12 +548,15 @@ let rec to_lambda env = function
 
 
 type value =
-| Block of value array
+| Block of int * value array
 | Seq of sequence_type * mutability * value array
 | Func of (value -> value)
 | Val of Lambda.structured_constant
+| Int of int
+| Int32 of Int32.t
+| Int64 of Int64.t
 
-let rec interpret locals env = function
+let rec interpret locals env : t -> value = function
   | Mvar v -> Ident.Map.find v locals
   | Mlambda (xs, e) ->
      let (x, e) = match xs with
@@ -450,7 +570,7 @@ let rec interpret locals env = function
      | _ -> failwith "not a function") (interpret locals env f) vs
   | Mlet (bindings, body) ->
      let rec bind locals = function
-       | [] -> 
+       | [] ->
           interpret locals env body
        | Unnamed e :: bindings ->
           ignore (interpret locals env e);
@@ -461,7 +581,7 @@ let rec interpret locals env = function
        | Recursive recs :: bindings ->
           let n = List.length recs in
           let values = Array.make n None in
-          let locals = List.fold_right 
+          let locals = List.fold_right
             (fun (x, e) locals -> Ident.Map.add x e locals)
             (List.mapi (fun i (x, _) ->
               (x, Func (fun v -> match values.(i) with
@@ -469,7 +589,7 @@ let rec interpret locals env = function
               | _ -> failwith "bad recursive binding"))) recs)
             locals in
           recs |> List.iteri (fun i (_, e) ->
-            values.(i) <- interpret locals env e);
+            values.(i) <- Some (interpret locals env e));
           bind locals bindings in
      bind locals bindings
   | Mconst k -> Val k
@@ -480,15 +600,28 @@ let rec interpret locals env = function
        | Pident id -> Symtable.get_global_value id
 *)
   | Mswitch (scr, cases) ->
-     begin match interpret locals env scr with
-     | Val (Const_base (Const_int n)) ->
-        (match List.assoc n cases.intcases with
-        | e -> interpret locals env e
-        | exception Not_found ->
-           match cases.defcase with
-           | Some e -> interpret locals env e
-           | None -> failwith "no match")
-     | _ -> failwith "no match"
+     let scr = interpret locals env scr in
+     let rec find_match = function
+       | (cases, e) :: rest ->
+          if List.exists (fun case -> match case, scr with
+          | `Tag n, Block (n', _) -> n = n'
+          | `Deftag, Block _ -> true
+          | `Intrange (min, max), Val (Const_base (Asttypes.Const_int n)) -> min <= n && n <= max
+          | _, _ -> false) cases then
+            interpret locals env e
+          else
+            find_match rest
+       | [] -> failwith "no case matches" in
+     find_match cases
+  | Mintop1 (op, ty, e) ->
+     let v = interpret locals env e in
+     begin match ty, op, v with
+     | `Int, `Neg, Int n -> Int (~-n)
+     | `Int, `Not, Int n -> Int (lnot n)
+     | `Int32, `Neg, Int32 n -> Int32 (Int32.neg n)
+     | `Int32, `Not, Int32 n -> Int32 (Int32.lognot n)
+     | `Int64, `Neg, Int64 n -> Int64 (Int64.neg n)
+     | `Int64, `Not, Int64 n -> Int64 (Int64.lognot n)
      end
   | _ -> failwith "nope"
 

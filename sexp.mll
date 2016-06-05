@@ -78,7 +78,7 @@ and read_sexp = parse
   { fail lexbuf "File is empty" }
 
 and read_sexp_end s = parse
-| space eof
+| (space | '\n')* eof
   { loc lexbuf (List s) }
 | _
   { fail lexbuf "File contains data past end of sexp" }
