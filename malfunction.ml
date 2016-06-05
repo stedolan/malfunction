@@ -268,54 +268,52 @@ module IntSwitch = struct
 
   type state =
     | Hole (* not currently in any interval *)
-    | Interval of { (* in an interval... *)
-      s_entered : int; (* since this position *)
-      s_max : int; (* until here *)
-      s_act : action; (* with this action *)
-      s_inactive : inactive (* overriding these inactive intervals *)
-    }
+    | Interval of (* in an interval... *)
+      int (* since this position *)
+      * int (* until here *)
+      * action (* with this action *)
+      * inactive (* overriding these inactive intervals *)
 
   let state_suc = function
     | Hole -> failwith "state_suc of Hole undefined"
-    | Interval { s_inactive = [] } -> Hole
-    | Interval { s_max; s_inactive = (max', act') :: rest } ->
+    | Interval (_, _, _, []) -> Hole
+    | Interval (_, s_max, _, (max', act') :: rest) ->
        assert (s_max < max');
-       (* can compute i.s_max + 1 without overflow, because inactive interval ends later *)
-       Interval { s_entered = s_max + 1; s_max = max'; s_act = act';
-                  s_inactive = rest }
+       (* can compute s_max + 1 without overflow, because inactive interval ends later *)
+       Interval (s_max + 1, max', act', rest)
 
   type result = case list (* may have duplicate actions, disjoint, sorted by position *)
-  let rec to_disjoint_intervals state cases : case list =
-    match state, cases with
+  let rec to_disjoint_intervals c_state c_cases : case list =
+    match c_state, c_cases with
     | Hole, [] -> []
 
     | Hole, ((min, max, act) :: cases) ->
-       to_disjoint_intervals (Interval { s_entered = min; s_max = max; s_act = act;
-                           s_inactive = [] }) cases
-    | Interval i, [] ->
-       (i.s_entered, i.s_max, i.s_act) :: to_disjoint_intervals (state_suc state) []
+       to_disjoint_intervals (Interval (min, max, act, [])) cases
 
-    | Interval i, (((min, max, act) :: _) as cases) when i.s_max < min ->
+    | Interval (entered, max, act, _) as state, [] ->
+       (entered, max, act) :: to_disjoint_intervals (state_suc state) []
+
+    | Interval (s_entered, s_max, s_act, _) as state,
+      (((min, max, act) :: _) as cases) when s_max < min ->
        (* active interval ends before this case begins *)
-       (i.s_entered, i.s_max, i.s_act) :: to_disjoint_intervals (state_suc state) cases
+       (s_entered, s_max, s_act) :: to_disjoint_intervals (state_suc state) cases
 
     (* below here, we can assume min <= i.s_max: active interval overlaps current case *)
-    | Interval i, ((min, max, act) :: cases) when i.s_act < act ->
+    | Interval (s_entered, s_max, s_act, s_inactive), ((min, max, act) :: cases) when s_act < act ->
        (* no change to active interval, but this case may become an inactive one *)
-       to_disjoint_intervals (Interval { i with s_inactive = insert_inactive max act i.s_inactive }) cases
+       to_disjoint_intervals (Interval (s_entered, s_max, s_act, insert_inactive max act s_inactive)) cases
 
-    | Interval i, ((min, max, act) :: cases) ->
+    | Interval (s_entered, s_max, s_act, s_inactive), ((min, max, act) :: cases) ->
        (* new active interval, so old one becomes inactive *)
-       assert (i.s_entered <= min); assert (min <= i.s_max); assert (act < i.s_act);
+       assert (s_entered <= min); assert (min <= s_max); assert (act < s_act);
        let r =
-         if i.s_entered = min then
+         if s_entered = min then
            (* old interval was not active long enough to produce output *)
            []
          else
-           [(i.s_entered, min - 1, i.s_act)] in
-       r @ to_disjoint_intervals (Interval {
-         s_entered = min; s_max = max; s_act = act;
-         s_inactive = insert_inactive i.s_max i.s_act i.s_inactive}) cases
+           [(s_entered, min - 1, s_act)] in
+       r @ to_disjoint_intervals
+         (Interval (min, max, act, insert_inactive s_max s_act s_inactive)) cases
 
 
   (* unfortunately, this is not exposed from matching.ml, so copy-paste *)
