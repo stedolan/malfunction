@@ -3,7 +3,8 @@ open Lambda
 open Asttypes
 
 
-type inttype = [`Unboxed | `Int32 | `Int64]
+type inttype = [`Int | `Int32 | `Int64 | `Bigint]
+type intconst = [`Int of int | `Int32 of Int32.t | `Int64 of Int64.t | `Bigint of Z.t]
 type unary_int_op =
   [`Neg | `Not]
 type binary_int_op =
@@ -22,7 +23,8 @@ type t =
 | Mlambda of Ident.t list * t
 | Mapply of t * t list
 | Mlet of binding list * t
-| Mconst of Lambda.structured_constant
+| Mint of intconst
+| Mstring of string
 | Mglobal of Longident.t
 | Mswitch of t * (case list * t) list
 
@@ -45,6 +47,10 @@ and binding =
 | Recursive of (Ident.t * t) list
 
 and case = [`Tag of int | `Deftag | `Intrange of int * int]
+
+type moduleexp =
+| Mmod of binding list * t list
+
 (* Compiling from sexps *)
 
 let fail loc fmt =
@@ -76,19 +82,19 @@ let parse_loc loc =
 
 let max_tag = 200
 let parse_tag = function
-| loc, List [_, Atom "tag"; _, Const (Const_base (Asttypes.Const_int n))] ->
+| loc, List [_, Atom "tag"; _, Int n] ->
    if 0 <= n && n < max_tag then n else fail loc "tag %d out of range [0,%d]" n (max_tag-1)
 | loc, _ -> fail loc "invalid tag"
 
 let unary_intops_by_name, binary_intops_by_name =
-  let unary_ops = [ `Neg, "neg"; `Not, "not" ] in
+  let unary_ops = [ `Neg, "neg"; `Not, "not"; `Const, "i" ] in
   let binary_ops =
     [ `Add, "+" ; `Sub, "-" ; `Mul, "*" ; `Div, "/" ; `Mod, "%" ;
       `And, "&" ; `Or, "|" ; `Xor, "^" ; `Lsl, "<<" ; `Lsr, ">>"  ; `Asr, "a>>" ;
       `Lt, "<" ; `Gt, ">" ; `Lte, "<=" ; `Gte, ">=" ; `Eq, "==" ] in
-  let types = [`Unboxed, "" ; `Int32, "32" ; `Int64, "64"] in
+  let types = [`Int, "" ; `Int32, "32" ; `Int64, "64" ; `Bigint, "big"] in
   let () = (* check that all cases are handled here *)
-    List.iter (function #unary_int_op, _ -> () | _ -> assert false) unary_ops;
+    List.iter (function (`Const | #unary_int_op), _ -> () | _ -> assert false) unary_ops;
     List.iter (function #binary_int_op, _ -> () | _ -> assert false) binary_ops;
     List.iter (function #inttype, _ -> () | _ -> assert false) types in
   List.fold_right (fun (ty,tyname) ->
@@ -163,9 +169,8 @@ and parse_exp env (loc, sexp) = match sexp with
      let parse_selector = function
        | _, List [_, Atom "tag"; _, Atom "_"] -> `Deftag
        | _, List ([_, Atom "tag"; _]) as t -> `Tag (parse_tag t)
-       | _, Const (Const_base (Asttypes.Const_int n)) -> `Intrange (n, n)
-       | _, List [_, Const (Const_base (Asttypes.Const_int min));
-               _, Const (Const_base (Asttypes.Const_int max))] -> `Intrange (min, max)
+       | _, Int n -> `Intrange (n, n)
+       | _, List [_, Int min; _, Int max] -> `Intrange (min, max)
        | _, Atom "_" -> `Intrange (min_int, max_int)
        | loc, _ -> fail loc "invalid selector" in
 
@@ -184,8 +189,20 @@ and parse_exp env (loc, sexp) = match sexp with
      Mswitch (parse_exp env exp, cases)
 
   | List [_, Atom s; e] when StrMap.mem s unary_intops_by_name ->
-     let (op, ty) = StrMap.find s unary_intops_by_name in
-     Mintop1 (op, ty, parse_exp env e)
+     let validate_const (pi, ps) = function
+       | _, Int n -> Mint (pi n)
+       | loc, Atom s -> (try Mint (ps s) with Failure _ | Invalid_argument _ -> 
+         fail loc "invalid literal %s" s)
+       | loc, _ -> fail loc "invalid literal" in
+     let const_parser = function
+       | `Int -> (fun x -> `Int x), (fun x -> `Int (int_of_string x))
+       | `Int32 -> (fun x -> `Int32 (Int32.of_int x)), (fun x -> `Int32 (Int32.of_string x)) 
+       | `Int64 -> (fun x -> `Int64 (Int64.of_int x)), (fun x -> `Int64 (Int64.of_string x))
+       | `Bigint -> (fun x -> `Bigint (Z.of_int x)), (fun x -> `Bigint (Z.of_string x)) in
+     begin match StrMap.find s unary_intops_by_name with
+     | (`Neg | `Not) as op, ty -> Mintop1 (op, ty, parse_exp env e)
+     | `Const, ty -> validate_const (const_parser ty) e
+     end
 
   | List [_, Atom s; e1; e2] when StrMap.mem s binary_intops_by_name ->
      let (op, ty) = StrMap.find s binary_intops_by_name in
@@ -203,11 +220,13 @@ and parse_exp env (loc, sexp) = match sexp with
   | List ((_, Atom "block") :: tag :: fields) ->
      Mblock (parse_tag tag, List.map (parse_exp env) fields)
 
-  | List [_, Atom "field"; _, Const (Const_base (Asttypes.Const_int n)); e] ->
+  | List [_, Atom "field"; _, Int n; e] ->
      Mfield (n, parse_exp env e)
 
-  | Const k ->
-     Mconst k
+  | Int k ->
+     Mint (`Int k)
+  | String s ->
+     Mstring s
 
   | List ((_, Atom "global") :: path) ->
      Mglobal (path
@@ -399,6 +418,36 @@ module IntSwitch = struct
     Switcher.zyva (low, high) scr cases store
 end
 
+let lookup env v =
+  let open Types in
+  let open Primitive in
+  let (path, descr) = Env.lookup_value (* ~loc:(parse_loc loc) *) v env in
+  match descr.val_kind with
+  | Val_reg -> `Val (Lambda.transl_path (* ~loc:(parse_loc loc) *) env path)
+  | Val_prim(p) -> 
+     if p.prim_name.[0] = '%' then failwith ("unimplemented primitive " ^ p.prim_name);
+     `Prim p
+  | _ -> failwith "unexpected kind of value"
+
+
+let builtin env path args =
+  let p = match path with
+    | path1 :: pathrest ->
+       List.fold_left (fun id s -> Longident.Ldot (id, s))
+         (Longident.Lident path1) pathrest
+    | _ -> assert false in
+  match lookup env p with
+  | `Val v ->
+     Lapply {
+       ap_func = v;
+       ap_args = args;
+       ap_loc = Location.none; (* FIXME *)
+       ap_should_be_tailcall = false;
+       ap_inlined = Default_inline;
+       ap_specialised = Default_specialise
+     }
+  | `Prim p ->
+     Lprim (Pccall p, args)
 
 let rec to_lambda env = function
   | Mvar v ->
@@ -415,14 +464,23 @@ let rec to_lambda env = function
        }
      }
   | Mapply (fn, args) ->
-     Lapply {
-       ap_func = to_lambda env fn;
-       ap_args = List.map (to_lambda env) args;
-       ap_loc = parse_loc loc;
-       ap_should_be_tailcall = false;
-       ap_inlined = Default_inline;
-       ap_specialised = Default_specialise;
-     }
+     let ap_func fn =
+       Lapply {
+         ap_func = fn;
+         ap_args = List.map (to_lambda env) args;
+         ap_loc = parse_loc loc;
+         ap_should_be_tailcall = false;
+         ap_inlined = Default_inline;
+         ap_specialised = Default_specialise;
+       } in
+     (match fn with
+     | Mglobal v ->
+        (match lookup env v with
+        | `Val v -> ap_func v
+        | `Prim p ->
+           Lprim (Pccall p, List.map (to_lambda env) args))
+     | fn ->
+        ap_func (to_lambda env fn))
   | Mlet (bindings, body) ->
      List.fold_right (fun b rest -> match b with
        | Unnamed e ->
@@ -432,11 +490,25 @@ let rec to_lambda env = function
        | Recursive bs ->
           Lletrec (List.map (fun (n, e) -> (n, to_lambda env e)) bs, rest))
        bindings (to_lambda env body)
-  | Mconst k ->
-     Lconst k
+  | Mint (`Int n) ->
+     Lconst (Const_base (Const_int n))
+  | Mint (`Int32 n) ->
+     Lconst (Const_base (Const_int32 n))
+  | Mint (`Int64 n) ->
+     Lconst (Const_base (Const_int64 n))
+  | Mint (`Bigint n) ->
+     (match Z.to_int n with
+     | n' ->
+        assert (Obj.repr n = Obj.repr n');
+        Lconst (Const_base (Const_int n'))
+     | exception Z.Overflow ->
+        builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string n))])
+  | Mstring s ->
+     Lconst (Const_immstring s)
   | Mglobal v ->
-     let (path, _descr) = Env.lookup_value (* ~loc:(parse_loc loc) *) v env in
-     Lambda.transl_path (* ~loc:(parse_loc loc) *) env path
+     (match lookup env v with
+     | `Val v -> v
+     | `Prim p -> failwith ("primitive " ^ Primitive.native_name p ^ " found where value expected"))
   | Mswitch (scr, cases) ->
      let scr = to_lambda env scr in
      let rec flatten acc = function
@@ -491,13 +563,15 @@ let rec to_lambda env = function
        | `Neg, `Int -> Lprim (Pnegint, [e])
        | `Neg, `Int32 -> Lprim (Pnegbint Pint32, [e])
        | `Neg, `Int64 -> Lprim (Pnegbint Pint64, [e])
+       | `Neg, `Bigint -> builtin env ["Z"; "neg"] [e]
        | `Not, `Int -> Lprim (Pnot, [e])
        | `Not, `Int32 ->
           Lprim (Pxorbint Pint32, [e; Lconst ones32])
        | `Not, `Int64 ->
-          Lprim (Pxorbint Pint64, [e; Lconst ones64]) in
+          Lprim (Pxorbint Pint64, [e; Lconst ones64])
+       | `Not, `Bigint -> builtin env ["Z"; "lognot"] [e] in
      code
-  | Mintop2 (op, ty, e1, e2) ->
+  | Mintop2 (op, ((`Int|`Int32|`Int64) as ty), e1, e2) ->
      let e1 = to_lambda env e1 in
      let e2 = to_lambda env e2 in
      let prim = match ty with
@@ -521,6 +595,17 @@ let rec to_lambda env = function
           | `Lte -> Pbintcomp (t, Cle) | `Gte -> Pbintcomp (t, Cge)
           | `Eq -> Pbintcomp (t, Ceq)) in
      Lprim (prim, [e1; e2])
+  | Mintop2 (op, `Bigint, e1, e2) ->
+     let e1 = to_lambda env e1 in
+     let e2 = to_lambda env e2 in
+     let fn = match op with
+       | `Add -> "add" | `Sub -> "sub"
+       | `Mul -> "mul" | `Div -> "div" | `Mod -> "rem"
+       | `And -> "logand" | `Or -> "logor" | `Xor -> "logxor"
+       | `Lsl -> "shift_left" | `Lsr -> "shift_right" | `Asr -> "shift_right"
+       | `Lt -> "lt" | `Gt -> "gt"
+       | `Lte -> "leq" | `Gte -> "geq" | `Eq -> "equal" in
+     builtin env ["Z"; fn] [e1; e2]
   | Mseqget (ty, seq, idx) ->
      let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
@@ -550,9 +635,7 @@ type value =
 | Seq of sequence_type * mutability * value array
 | Func of (value -> value)
 | Val of Lambda.structured_constant
-| Int of int
-| Int32 of Int32.t
-| Int64 of Int64.t
+| Int of intconst
 
 let rec interpret locals env : t -> value = function
   | Mvar v -> Ident.Map.find v locals
@@ -590,7 +673,10 @@ let rec interpret locals env : t -> value = function
             values.(i) <- Some (interpret locals env e));
           bind locals bindings in
      bind locals bindings
-  | Mconst k -> Val k
+  | Mint k -> Int k
+  | Mstring s ->
+     Seq (`Bytevec, `Imm, 
+          Array.init (String.length s) (fun i -> Int (`Int (Char.code (String.get s i)))))
   | Mglobal v -> failwith "globals unsupported"
 (*
      let (path, _descr) = Env.lookup_value v env in
@@ -612,25 +698,67 @@ let rec interpret locals env : t -> value = function
        | [] -> failwith "no case matches" in
      find_match cases
   | Mintop1 (op, ty, e) ->
-     let v = interpret locals env e in
-     begin match ty, op, v with
-     | `Int, `Neg, Int n -> Int (~-n)
-     | `Int, `Not, Int n -> Int (lnot n)
-     | `Int32, `Neg, Int32 n -> Int32 (Int32.neg n)
-     | `Int32, `Not, Int32 n -> Int32 (Int32.lognot n)
-     | `Int64, `Neg, Int64 n -> Int64 (Int64.neg n)
-     | `Int64, `Not, Int64 n -> Int64 (Int64.lognot n)
-     end
-  | _ -> failwith "nope"
+     let v = match interpret locals env e with
+       | Int k -> k | _ -> failwith "expected integer" in
+     Int (match ty, op, v with
+     | `Int, `Neg, `Int n -> `Int (~-n)
+     | `Int, `Not, `Int n -> `Int (lnot n)
+     | `Int32, `Neg, `Int32 n -> `Int32 (Int32.neg n)
+     | `Int32, `Not, `Int32 n -> `Int32 (Int32.lognot n)
+     | `Int64, `Neg, `Int64 n -> `Int64 (Int64.neg n)
+     | `Int64, `Not, `Int64 n -> `Int64 (Int64.lognot n)
+     | `Bigint, `Neg, `Bigint n -> `Bigint (Z.neg n)
+     | `Bigint, `Not, `Bigint n -> `Bigint (Z.lognot n)
+     | _ -> failwith "wrong integer type")
+  | Mintop2 (op, ty, e1, e2) ->
+     let (v1, v2) = match interpret locals env e1, interpret locals env e2 with
+       | Int k1, Int k2 -> k1, k2
+       | _ -> failwith "expected integers" in
+     Int (failwith "unimplemented!")
+  | Mseqget (ty, seq, idx) ->
+     (match interpret locals env seq, interpret locals env idx with
+     | Seq (ty', _, vals), Int (`Int i) when ty = ty' -> vals.(i)
+     | _ -> failwith "wrong sequence type")
+  | Mseqset (ty, seq, idx, e) ->
+     (match interpret locals env seq, 
+            interpret locals env idx, 
+            interpret locals env e with
+     | Seq (ty', `Mut, vals), Int (`Int i), v when ty = ty' ->
+        vals.(i) <- v; Int (`Int 0)
+     | _ -> failwith "wrong sequence type/mutability")
+  | Mseqlen (ty, seq) ->
+     (match interpret locals env seq with
+     | Seq (ty', _, vals) when ty = ty' -> Int (`Int (Array.length vals))
+     | _ -> failwith "wrong sequence type")
+  | Mblock (tag, vals) ->
+     Block (tag, Array.of_list (List.map (interpret locals env) vals))
+  | Mfield (idx, b) ->
+     (match interpret locals env b with
+     | Block (_, vals) -> vals.(idx)
+     | _ -> failwith "not a block")
 
-
-let parse_mod globals (loc, sexp) = match sexp with
+let parse_mod (loc, sexp) = match sexp with
   | List ((_, Atom "module") :: rest) ->
      let (bindings, env, exports) = parse_bindings loc StrMap.empty [] rest in
      let exports = match exports with
        | _, List ((_, Atom "export") :: exports) ->
           List.map (parse_exp env) exports
        | _ -> fail loc "export list?" in
-     let code = Mlet (bindings, Mblock(0, exports)) in
-     (List.length exports, to_lambda globals code)
+     Mmod (bindings, exports)
   | _ -> fail loc "mod?"
+
+let lambda_of_mod (Mmod (bindings, exports)) =
+  let code = Mlet (bindings, Mblock(0, exports)) in
+  let globals = Compmisc.initial_env () in
+
+  let print_if flag printer arg =
+    if !flag then Format.printf "%a@." printer arg;
+    arg in
+
+  let lambda = code
+  |> to_lambda globals
+  |> print_if Clflags.dump_rawlambda Printlambda.lambda
+  |> Simplif.simplify_lambda
+  |> print_if Clflags.dump_lambda Printlambda.lambda in
+
+  (List.length exports, lambda)
