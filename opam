@@ -1,0 +1,17 @@
+opam-version: "1.2"
+maintainer: "stephen.dolan@cl.cam.ac.uk"
+authors: ["Stephen Dolan"]
+homepage: "https://github.com/stedolan/malfunction"
+bug-reports: "https://github.com/stedolan/malfunction/issues"
+dev-repo: "https://github.com/stedolan/malfunction.git"
+license: "MIT"
+build:
+[[ "ocaml" "pkg/pkg.ml" "build"
+           "--pinned" "%{pinned}%"]]
+available: [ ocaml-version >= "4.03" ]
+depends: [
+  "ocamlbuild" {build}
+  "ocamlfind" {build}
+  "topkg" {build}
+  "zarith"
+]

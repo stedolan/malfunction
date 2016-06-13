@@ -8,11 +8,8 @@ and rawsexp =
 | Int of int
 | List of sexp list
 
-
-exception SyntaxError of (Lexing.position * Lexing.position) * string
-
 let loc lexbuf x = ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), x)
-let fail lexbuf s = raise (SyntaxError ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), s))
+let fail lexbuf s = raise (Malfunction.SyntaxError ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), s))
 
 let const_int s =
   match int_of_string s with
@@ -86,6 +83,6 @@ and read_sexp_end s = parse
 
 and read_next_sexp = parse
 | space* '('
-  { sexps [] lexbuf }
+  { loc lexbuf (List (sexps [] lexbuf)) }
 | _
   { fail lexbuf "Sexp must start with '('" }
