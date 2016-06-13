@@ -105,3 +105,6 @@ let rec interpret locals env : t -> value = function
      (match interpret locals env b with
      | Block (_, vals) -> vals.(idx)
      | _ -> failwith "not a block")
+
+let eval exp =
+  interpret Ident.Map.empty () exp

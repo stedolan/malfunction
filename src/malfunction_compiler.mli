@@ -3,7 +3,7 @@ type outfiles = {
   objfile : string;
   cmxfile : string
 }
- 
+val delete_temps : outfiles -> unit 
 
 val compile_cmx : string -> outfiles
 

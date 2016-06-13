@@ -22,13 +22,13 @@ let var s =
   assert (s.[0] = '$');
   Var (String.sub s 1 (String.length s - 1))
 
-let rec print_sexp ppf (_, s) = let open Format in match s with
+let rec print ppf (_, s) = let open Format in match s with
   | Atom s -> fprintf ppf "%s" s
   | Var s -> fprintf ppf "$%s" s
   | Int n -> fprintf ppf "%d" n
   | String s -> fprintf ppf "%S" s
   | List l ->
-     fprintf ppf "@[<2>(%a)@]" (pp_print_list ~pp_sep:pp_print_space print_sexp) l
+     fprintf ppf "@[<2>(%a)@]" (pp_print_list ~pp_sep:pp_print_space print) l
 }
 
 let space = [' ' '\t' '\r']*

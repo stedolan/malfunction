@@ -9,3 +9,5 @@ and rawsexp =
 
 val read_next_sexp : Lexing.lexbuf -> sexp
 val read_only_sexp : Lexing.lexbuf -> sexp
+
+val print : Format.formatter -> sexp -> unit
