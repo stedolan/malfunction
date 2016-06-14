@@ -359,19 +359,19 @@ let rec to_lambda env = function
      let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
        | `Bytevec -> Pstringrefs
-       | `Floatvec -> Parrayrefs Pfloatarray in
+(*       | `Floatvec -> Parrayrefs Pfloatarray *) in
      Lprim (prim, [to_lambda env seq; to_lambda env idx])
   | Mseqset (ty, seq, idx, v) ->
      let prim = match ty with
        | `Array -> Parraysets Paddrarray
        | `Bytevec -> Pstringsets
-       | `Floatvec -> Parraysets Pfloatarray in
+(*       | `Floatvec -> Parraysets Pfloatarray *) in
      Lprim (prim, [to_lambda env seq; to_lambda env idx; to_lambda env v])
   | Mseqlen (ty, seq) ->
      let prim = match ty with
        | `Array -> Parraylength Paddrarray
        | `Bytevec -> Pstringlength
-       | `Floatvec -> Parraylength Pfloatarray in
+(*       | `Floatvec -> Parraylength Pfloatarray *) in
      Lprim (prim, [to_lambda env seq])
   | Mblock (tag, vals) ->
      Lprim (Pmakeblock(tag, Immutable), List.map (to_lambda env) vals)

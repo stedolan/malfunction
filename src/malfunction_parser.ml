@@ -11,7 +11,7 @@ type binary_int_op =
   | `Lt | `Gt | `Lte | `Gte | `Eq ]
 
 type sequence_type =
-  [`Array | `Bytevec | `Floatvec]
+  [`Array | `Bytevec]
 type mutability =
   [ `Imm | `Mut ]
 
@@ -106,7 +106,7 @@ let unary_intops_by_name, binary_intops_by_name =
 let seqops_by_name op =
   List.fold_right (fun (ty,tyname) ->
     StrMap.add (op ^ "-" ^ tyname) ty)
-    [`Array, "array"; `Bytevec, "bytevec"; `Floatvec, "floatvec"]
+    [`Array, "array"; `Bytevec, "bytevec"]
     StrMap.empty
 let seq_get_by_name = seqops_by_name "get"
 let seq_set_by_name = seqops_by_name "set"

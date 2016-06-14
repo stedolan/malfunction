@@ -8,7 +8,7 @@ type binary_int_op =
   | `Lt | `Gt | `Lte | `Gte | `Eq ]
 
 type sequence_type =
-  [`Array | `Bytevec | `Floatvec]
+  [`Array | `Bytevec]
 type mutability =
   [ `Imm | `Mut ]
 
