@@ -164,6 +164,13 @@ and parse_exp env (loc, sexp) = match sexp with
      let (bindings, env, e) = parse_bindings loc env [] bindings in
      Mlet (bindings, parse_exp env e)
 
+  | List ((loc, Atom "seq") :: ((_ :: _) as exps)) ->
+     let rec to_let acc = function
+       | [] -> assert false
+       | [e] -> Mlet (List.rev acc, parse_exp env e)
+       | e :: es -> to_let (`Unnamed (parse_exp env e) :: acc) es in
+     to_let [] exps
+
   | List ((_, Atom "switch") :: exp :: cases) ->
      let parse_selector = function
        | _, List [_, Atom "tag"; _, Atom "_"] -> `Deftag
@@ -186,6 +193,11 @@ and parse_exp env (loc, sexp) = match sexp with
        fail loc "duplicate cases";
 
      Mswitch (parse_exp env exp, cases)
+
+  | List [_, Atom "if"; cond; tt; ff] ->
+     Mswitch (parse_exp env cond, 
+              [[`Intrange (0, 0)], parse_exp env ff;
+               [`Intrange (min_int, max_int); `Deftag], parse_exp env tt])
 
   | List [_, Atom s; e] when StrMap.mem s unary_intops_by_name ->
      let validate_const (pi, ps) = function

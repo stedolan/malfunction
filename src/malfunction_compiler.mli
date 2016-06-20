@@ -17,3 +17,4 @@ val lambda_to_cmx :
   string -> (* the filename being compiled (used to print warnings) *)
   string -> (* the prefix for the output filenames *)
   lambda_mod -> outfiles
+val link_executable : string -> outfiles -> int

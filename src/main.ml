@@ -34,14 +34,12 @@ let run mode impl output =
   | `Cmx, Some file ->
      with_error_reporting (fun () -> let _ = Malfunction_compiler.compile_cmx file in 0)
   | `Compile, Some file ->
-     with_error_reporting (fun () ->
+     with_error_reporting (fun () -> 
        let tmpfiles = Malfunction_compiler.compile_cmx file in
        let output = match output with
          | None -> Compenv.output_prefix file
          | Some out -> out in
-       let res =
-         Sys.command (Printf.sprintf "ocamlfind ocamlopt -package zarith zarith.cmxa '%s' -o '%s'" (* urgh *)
-                        tmpfiles.Malfunction_compiler.cmxfile output) in
+       let res = Malfunction_compiler.link_executable output tmpfiles in
        Malfunction_compiler.delete_temps tmpfiles;
        res)
   | `Eval, Some file ->

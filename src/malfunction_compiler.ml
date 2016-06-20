@@ -180,8 +180,16 @@ let lookup env v =
   let (path, descr) = Env.lookup_value (* ~loc:(parse_loc loc) *) v env in
   match descr.val_kind with
   | Val_reg -> `Val (Lambda.transl_path (* ~loc:(parse_loc loc) *) env path)
-  | Val_prim(p) -> 
-     if p.prim_name.[0] = '%' then failwith ("unimplemented primitive " ^ p.prim_name);
+  | Val_prim(p) ->
+     let p = match p.prim_name with
+       | "%equal" -> 
+          Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true
+       | "%compare" -> 
+          Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true
+       | s when s.[0] = '%' ->
+          failwith ("unimplemented primitive " ^ p.prim_name);
+       | _ ->
+          p in
      `Prim p
   | _ -> failwith "unexpected kind of value"
 
@@ -494,3 +502,9 @@ let compile_cmx filename =
   Malfunction_parser.read_module lexbuf
   |> module_to_lambda
   |> lambda_to_cmx filename prefixname
+
+let link_executable output tmpfiles =
+  (* urgh *)
+  Sys.command (Printf.sprintf "ocamlfind ocamlopt -package zarith zarith.cmxa '%s' -o '%s'" 
+                 tmpfiles.cmxfile output)
+

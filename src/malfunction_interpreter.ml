@@ -6,6 +6,14 @@ type value =
 | Func of (value -> value)
 | Int of intconst
 
+exception Error of string
+
+let fail fmt =
+  let k ppf =
+    raise (Error (Format.flush_str_formatter ())) in
+  Format.kfprintf k Format.str_formatter ("@[" ^^ fmt ^^ "@]")
+
+
 module type IntType = sig
   type t
   val of_int : int -> t
@@ -53,7 +61,7 @@ module IntTypeInt = struct
 
   let of_val = function
     | Int (`Int n) -> n
-    | _ -> failwith "expected int"
+    | _ -> fail "expected int"
   let to_val n = Int (`Int n)
 end
 
@@ -97,14 +105,14 @@ module ArithInt32 = Arith(struct
   include Int32
   let of_val = function
     | Int (`Int32 n) -> n
-    | _ -> failwith "expected int32"
+    | _ -> fail "expected int32"
   let to_val n = Int (`Int32 n)
 end)
 module ArithInt64 = Arith(struct
   include Int64
   let of_val = function
     | Int (`Int64 n) -> n
-    | _ -> failwith "expected int64"
+    | _ -> fail "expected int64"
   let to_val n = Int (`Int64 n)
 end)
 module ArithBigint = Arith(struct
@@ -112,7 +120,7 @@ module ArithBigint = Arith(struct
   let shift_right_logical = shift_right
   let of_val = function
     | Int (`Bigint n) -> n
-    | _ -> failwith "expected bigint"
+    | _ -> fail "expected bigint"
   let to_val n = Int (`Bigint n)
 end)
 
@@ -131,7 +139,7 @@ let rec interpret locals env : t -> value = function
   | Mapply (f, vs) ->
      List.fold_left (fun f v -> match f with
      | Func f -> f (interpret locals env v)
-     | _ -> failwith "not a function") (interpret locals env f) vs
+     | _ -> fail "not a function") (interpret locals env f) vs
   | Mlet (bindings, body) ->
      let rec bind locals = function
        | [] ->
@@ -150,7 +158,7 @@ let rec interpret locals env : t -> value = function
             (List.mapi (fun i (x, _) ->
               (x, Func (fun v -> match values.(i) with
               | Some (Func f) -> f v
-              | _ -> failwith "bad recursive binding"))) recs)
+              | _ -> fail "bad recursive binding"))) recs)
             locals in
           recs |> List.iteri (fun i (_, e) ->
             values.(i) <- Some (interpret locals env e));
@@ -160,14 +168,14 @@ let rec interpret locals env : t -> value = function
   | Mstring s ->
      Seq (`Bytevec, `Imm, 
           Array.init (String.length s) (fun i -> Int (`Int (Char.code (String.get s i)))))
-  | Mglobal v -> failwith "globals unsupported"
+  | Mglobal v -> fail "globals unsupported"
      (*
      let (path, _descr) = Env.lookup_value v env in
      let path = Env.normalize_path None env path in
      let rec lookup = let open Path in function
        | Pident id -> Symtable.get_global_value id
        | Pdot (path, _, i) -> Obj.field (lookup path) i
-       | Papply _ -> failwith "functor application in global reference" in
+       | Papply _ -> fail "functor application in global reference" in
      lookup path
      *)
   | Mswitch (scr, cases) ->
@@ -182,7 +190,7 @@ let rec interpret locals env : t -> value = function
             interpret locals env e
           else
             find_match rest
-       | [] -> failwith "no case matches" in
+       | [] -> fail "no case matches" in
      find_match cases
   | Mintop1 (op, ty, e) ->
      let fn = match ty with
@@ -201,24 +209,24 @@ let rec interpret locals env : t -> value = function
   | Mseqget (ty, seq, idx) ->
      (match interpret locals env seq, interpret locals env idx with
      | Seq (ty', _, vals), Int (`Int i) when ty = ty' -> vals.(i)
-     | _ -> failwith "wrong sequence type")
+     | _ -> fail "wrong sequence type")
   | Mseqset (ty, seq, idx, e) ->
      (match interpret locals env seq, 
             interpret locals env idx, 
             interpret locals env e with
      | Seq (ty', `Mut, vals), Int (`Int i), v when ty = ty' ->
         vals.(i) <- v; Int (`Int 0)
-     | _ -> failwith "wrong sequence type/mutability")
+     | _ -> fail "wrong sequence type/mutability")
   | Mseqlen (ty, seq) ->
      (match interpret locals env seq with
      | Seq (ty', _, vals) when ty = ty' -> Int (`Int (Array.length vals))
-     | _ -> failwith "wrong sequence type")
+     | _ -> fail "wrong sequence type")
   | Mblock (tag, vals) ->
      Block (tag, Array.of_list (List.map (interpret locals env) vals))
   | Mfield (idx, b) ->
      (match interpret locals env b with
      | Block (_, vals) -> vals.(idx)
-     | _ -> failwith "not a block")
+     | _ -> fail "not a block")
 
 let eval exp =
   interpret Ident.Map.empty () exp
