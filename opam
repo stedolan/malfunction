@@ -4,7 +4,7 @@ authors: ["Stephen Dolan"]
 homepage: "https://github.com/stedolan/malfunction"
 bug-reports: "https://github.com/stedolan/malfunction/issues"
 dev-repo: "https://github.com/stedolan/malfunction.git"
-license: "MIT"
+license: "LGPL"
 build:
 [[ "ocaml" "pkg/pkg.ml" "build"
            "--pinned" "%{pinned}%"]]
