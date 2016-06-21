@@ -7,7 +7,7 @@ type binary_int_op =
   | `And | `Or | `Xor | `Lsl | `Lsr | `Asr
   | `Lt | `Gt | `Lte | `Gte | `Eq ]
 
-type sequence_type =
+type vector_type =
   [`Array | `Bytevec]
 type mutability =
   [ `Imm | `Mut ]
@@ -31,10 +31,11 @@ type t =
 | Mintop1 of unary_int_op * inttype * t
 | Mintop2 of binary_int_op * inttype * t * t
 
-(* Sequences *)
-| Mseqget of sequence_type * t * t
-| Mseqset of sequence_type * t * t * t
-| Mseqlen of sequence_type * t
+(* Vectors *)
+| Mvecnew of vector_type * t * t
+| Mvecget of vector_type * t * t
+| Mvecset of vector_type * t * t * t
+| Mveclen of vector_type * t
 
 (* Blocks *)
 | Mblock of int * t list

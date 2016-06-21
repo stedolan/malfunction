@@ -4,7 +4,7 @@ exception Error of string
 
 type value =
 | Block of int * value array
-| Seq of sequence_type * mutability * value array
+| Vec of vector_type * value array
 | Func of (value -> value)
 | Int of intconst
 

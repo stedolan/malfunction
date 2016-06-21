@@ -10,7 +10,7 @@ type binary_int_op =
   | `And | `Or | `Xor | `Lsl | `Lsr | `Asr
   | `Lt | `Gt | `Lte | `Gte | `Eq ]
 
-type sequence_type =
+type vector_type =
   [`Array | `Bytevec]
 type mutability =
   [ `Imm | `Mut ]
@@ -37,10 +37,11 @@ type t =
 | Mintop1 of unary_int_op * inttype * t
 | Mintop2 of binary_int_op * inttype * t * t
 
-(* Sequences *)
-| Mseqget of sequence_type * t * t
-| Mseqset of sequence_type * t * t * t
-| Mseqlen of sequence_type * t
+(* Vectors *)
+| Mvecnew of vector_type * t * t
+| Mvecget of vector_type * t * t
+| Mvecset of vector_type * t * t * t
+| Mveclen of vector_type * t
 
 (* Blocks *)
 | Mblock of int * t list
@@ -103,14 +104,15 @@ let unary_intops_by_name, binary_intops_by_name =
     List.fold_right (fun (op,opname) ->
       StrMap.add (opname ^ tyname) (op, ty)) binary_ops) types StrMap.empty
 
-let seqops_by_name op =
+let vecops_by_name op =
   List.fold_right (fun (ty,tyname) ->
     StrMap.add (op ^ tyname) ty)
     [`Array, ""; `Bytevec, ".byte"]
     StrMap.empty
-let seq_get_by_name = seqops_by_name "load"
-let seq_set_by_name = seqops_by_name "store"
-let seq_len_by_name = seqops_by_name "length"
+let vec_new_by_name = vecops_by_name "makevec"
+let vec_get_by_name = vecops_by_name "load"
+let vec_set_by_name = vecops_by_name "store"
+let vec_len_by_name = vecops_by_name "length"
 
 (*
 (let
@@ -219,14 +221,17 @@ and parse_exp env (loc, sexp) = match sexp with
      let (op, ty) = StrMap.find s binary_intops_by_name in
      Mintop2 (op, ty, parse_exp env e1, parse_exp env e2)
 
-  | List [_, Atom op; seq; idx] when StrMap.mem op seq_get_by_name ->
-     Mseqget (StrMap.find op seq_get_by_name, parse_exp env seq, parse_exp env idx)
+  | List [_, Atom op; len; def] when StrMap.mem op vec_new_by_name ->
+     Mvecnew (StrMap.find op vec_new_by_name, parse_exp env len, parse_exp env def)
 
-  | List [_, Atom op; seq; idx; v] when StrMap.mem op seq_set_by_name ->
-     Mseqset (StrMap.find op seq_set_by_name, parse_exp env seq, parse_exp env idx, parse_exp env v)
+  | List [_, Atom op; vec; idx] when StrMap.mem op vec_get_by_name ->
+     Mvecget (StrMap.find op vec_get_by_name, parse_exp env vec, parse_exp env idx)
 
-  | List [_, Atom op; seq] when StrMap.mem op seq_len_by_name ->
-     Mseqlen (StrMap.find op seq_len_by_name, parse_exp env seq)
+  | List [_, Atom op; vec; idx; v] when StrMap.mem op vec_set_by_name ->
+     Mvecset (StrMap.find op vec_set_by_name, parse_exp env vec, parse_exp env idx, parse_exp env v)
+
+  | List [_, Atom op; vec] when StrMap.mem op vec_len_by_name ->
+     Mveclen (StrMap.find op vec_len_by_name, parse_exp env vec)
 
   | List ((_, Atom "block") :: tag :: fields) ->
      Mblock (parse_tag tag, List.map (parse_exp env) fields)

@@ -4,8 +4,8 @@ open Malfunction_interpreter
 exception ReifyFailure of string
 let rec reify = function
 | Block (n, xs) -> reify_block n xs
-| Seq (`Array, _, xs) -> reify_block 0 xs
-| Seq (`Bytevec, _, xs) ->
+| Vec (`Array, xs) -> reify_block 0 xs
+| Vec (`Bytevec, xs) ->
    let to_char = function
      | Int (`Int n) when 0 <= n && n < 256 ->
         String.make 1 (Char.chr n)

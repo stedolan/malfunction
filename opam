@@ -13,5 +13,6 @@ depends: [
   "ocamlbuild" {build}
   "ocamlfind" {build}
   "topkg" {build}
+  "omd" {test}
   "zarith"
 ]

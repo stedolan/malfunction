@@ -2,7 +2,7 @@ open Malfunction_parser
 
 type value =
 | Block of int * value array
-| Seq of sequence_type * mutability * value array
+| Vec of vector_type * value array
 | Func of (value -> value)
 | Int of intconst
 
@@ -165,7 +165,7 @@ let rec interpret locals env : t -> value = function
      bind locals bindings
   | Mint k -> Int k
   | Mstring s ->
-     Seq (`Bytevec, `Imm, 
+     Vec (`Bytevec,
           Array.init (String.length s) (fun i -> Int (`Int (Char.code (String.get s i)))))
   | Mglobal v -> fail "globals unsupported"
      (*
@@ -205,21 +205,39 @@ let rec interpret locals env : t -> value = function
        | `Int64 -> ArithInt64.binary_op
        | `Bigint -> ArithBigint.binary_op in
      fn op (interpret locals env e1) (interpret locals env e2)
-  | Mseqget (ty, seq, idx) ->
-     (match interpret locals env seq, interpret locals env idx with
-     | Seq (ty', _, vals), Int (`Int i) when ty = ty' -> vals.(i)
-     | _ -> fail "wrong sequence type")
-  | Mseqset (ty, seq, idx, e) ->
-     (match interpret locals env seq, 
+  | Mvecnew (ty, len, def) ->
+     (match ty, interpret locals env len, interpret locals env def with
+     | `Array, Int (`Int len), v ->
+        Vec (`Array, Array.make len v)
+     | `Bytevec, Int (`Int len), (Int (`Int k) as v) when 0 <= k && k < 256 ->
+        Vec (`Bytevec, Array.make len v)
+     | _, _, _ -> fail "bad vector creation")
+  | Mvecget (ty, vec, idx) ->
+     (match interpret locals env vec, interpret locals env idx with
+     | Vec (ty', vals), Int (`Int i) when ty = ty' ->
+        if 0 <= i && i < Array.length vals then
+          vals.(i)
+        else
+          fail "index out of bounds: %d" i
+     | _ -> fail "wrong vector type")
+  | Mvecset (ty, vec, idx, e) ->
+     (match interpret locals env vec, 
             interpret locals env idx, 
             interpret locals env e with
-     | Seq (ty', `Mut, vals), Int (`Int i), v when ty = ty' ->
-        vals.(i) <- v; Int (`Int 0)
-     | _ -> fail "wrong sequence type/mutability")
-  | Mseqlen (ty, seq) ->
-     (match interpret locals env seq with
-     | Seq (ty', _, vals) when ty = ty' -> Int (`Int (Array.length vals))
-     | _ -> fail "wrong sequence type")
+     | Vec (ty', vals), Int (`Int i), v when ty = ty' ->
+        if 0 <= i && i <= Array.length vals then begin
+          (match ty, v with
+          |  `Array, _ -> ()
+          | `Bytevec, Int (`Int i) when 0 <= i && i < 256 -> ()
+          | `Bytevec, v -> fail "not a byte");
+          vals.(i) <- v; Int (`Int 0)
+        end else
+          fail "index out of bounds: %d" i
+     | _ -> fail "wrong vector type")
+  | Mveclen (ty, vec) ->
+     (match interpret locals env vec with
+     | Vec (ty', vals) when ty = ty' -> Int (`Int (Array.length vals))
+     | _ -> fail "wrong vector type")
   | Mblock (tag, vals) ->
      Block (tag, Array.of_list (List.map (interpret locals env) vals))
   | Mfield (idx, b) ->

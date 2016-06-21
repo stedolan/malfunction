@@ -363,24 +363,28 @@ let rec to_lambda env = function
        | `Lt -> "lt" | `Gt -> "gt"
        | `Lte -> "leq" | `Gte -> "geq" | `Eq -> "equal" in
      builtin env ["Z"; fn] [e1; e2]
-  | Mseqget (ty, seq, idx) ->
+  | Mvecnew (`Array, len, def) ->
+     builtin env ["Array"; "make"] [to_lambda env len; to_lambda env def]
+  | Mvecnew (`Bytevec, len, def) ->
+     builtin env ["String"; "make"] [to_lambda env len; to_lambda env def]
+  | Mvecget (ty, vec, idx) ->
      let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
        | `Bytevec -> Pstringrefs
 (*       | `Floatvec -> Parrayrefs Pfloatarray *) in
-     Lprim (prim, [to_lambda env seq; to_lambda env idx])
-  | Mseqset (ty, seq, idx, v) ->
+     Lprim (prim, [to_lambda env vec; to_lambda env idx])
+  | Mvecset (ty, vec, idx, v) ->
      let prim = match ty with
        | `Array -> Parraysets Paddrarray
        | `Bytevec -> Pstringsets
 (*       | `Floatvec -> Parraysets Pfloatarray *) in
-     Lprim (prim, [to_lambda env seq; to_lambda env idx; to_lambda env v])
-  | Mseqlen (ty, seq) ->
+     Lprim (prim, [to_lambda env vec; to_lambda env idx; to_lambda env v])
+  | Mveclen (ty, vec) ->
      let prim = match ty with
        | `Array -> Parraylength Paddrarray
        | `Bytevec -> Pstringlength
 (*       | `Floatvec -> Parraylength Pfloatarray *) in
-     Lprim (prim, [to_lambda env seq])
+     Lprim (prim, [to_lambda env vec])
   | Mblock (tag, vals) ->
      Lprim (Pmakeblock(tag, Immutable), List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
