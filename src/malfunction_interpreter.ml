@@ -13,7 +13,6 @@ let fail fmt =
     raise (Error (Format.flush_str_formatter ())) in
   Format.kfprintf k Format.str_formatter ("@[" ^^ fmt ^^ "@]")
 
-
 module type IntType = sig
   type t
   val of_int : int -> t
@@ -230,3 +229,15 @@ let rec interpret locals env : t -> value = function
 
 let eval exp =
   interpret Ident.Map.empty () exp
+
+let loc =
+  let l = Lexing.{pos_fname="<value>"; pos_lnum=0; pos_cnum=0; pos_bol=0} in
+  l,l
+
+let rec render_value = let open Malfunction_sexp in function
+| Block (tag, elems) -> loc, List (
+  (loc, Atom "block")::
+  (loc, List [loc, Atom "tag"; loc, Int tag]):: 
+  List.map render_value (Array.to_list elems))
+| _ -> failwith "woops"
+   

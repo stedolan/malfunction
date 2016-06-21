@@ -2,7 +2,17 @@ open Malfunction
 
 
 let usage () =
-  Printf.fprintf stderr "usage: ?\n"; 2
+  Printf.fprintf stderr "%s" @@
+    "Malfunction v0.1. Usage:\n"^
+    "   malfunction compile [-v] [-o output] input.mlf\n" ^
+    "     Compile input.mlf to an executable\n\n" ^
+    "   malfunction cmx [-v] input.mlf\n" ^
+    "     Compile input.mlf to input.cmx, for linking with ocamlopt\n\n" ^
+    "   malfunction eval\n" ^
+    "     Run a REPL to evaluate expressions with the interpreter\n\n" ^
+    "   malfunction fmt\n" ^
+    "     Reindent the s-expression on standard input\n";
+  2
 
 let repl () =
   let lexbuf = Lexing.from_channel stdin in

@@ -35,6 +35,7 @@ let check xs =
 let check_stub = "
   (lambda ($xs)
     (seq
+      (apply (global $Z $of_string) \"42\") ; ensure zarith loaded for unmarshalling
       (apply (global $Array $iter) (lambda ($x)
         (apply (global $Pervasives $print_char)
           (if (apply (global $Pervasives $=)
@@ -151,10 +152,10 @@ let run_file filename =
          | testRes, expectObj when testRes <> expectRes -> `NoMatch (test, expectObj)
          | testRes, expectObj -> `Match (test, expectObj))
      |> run_tests in
-     Format.printf "\n";
+     let passed = ref 0 in
      let describe (ty, ({Lexing.pos_lnum = line}, _), _, _) result =
        let say fmt =
-         Format.printf "%s:%d: " filename line;
+         Format.printf "\n%s:%d: " filename line;
          let endline ppf =
            Format.fprintf ppf "\n%!" in
          Format.kfprintf endline Format.std_formatter fmt in
@@ -164,14 +165,14 @@ let run_file filename =
        | _, `Inconsistent -> say "inconsistent results"
        | `Test, `Match
        | `TestUndef, `Undefined _
-       | `TestDiffer, `Different -> say "ok"
+       | `TestDiffer, `Different -> incr passed
        | (`Test|`TestDiffer), `Undefined s -> say "undefined behaviour: %s" s
        | (`Test|`TestUndef), `Different -> say "values don't match"
        | (`TestDiffer|`TestUndef), `Match -> say "values match when not expected to" end;
-       Format.printf "%!"
      in
+     List.iter2 describe cases results;
+     Format.printf "\r%-25s [%d/%d] tests passed\n%!" (filename ^ ":") !passed (List.length cases)
 
-     List.iter2 describe cases results
 
 let () =
   match Sys.argv with

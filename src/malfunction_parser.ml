@@ -91,7 +91,7 @@ let unary_intops_by_name, binary_intops_by_name =
     [ `Add, "+" ; `Sub, "-" ; `Mul, "*" ; `Div, "/" ; `Mod, "%" ;
       `And, "&" ; `Or, "|" ; `Xor, "^" ; `Lsl, "<<" ; `Lsr, ">>"  ; `Asr, "a>>" ;
       `Lt, "<" ; `Gt, ">" ; `Lte, "<=" ; `Gte, ">=" ; `Eq, "==" ] in
-  let types = [`Int, "" ; `Int32, "32" ; `Int64, "64" ; `Bigint, "big"] in
+  let types = [`Int, "" ; `Int32, ".32" ; `Int64, ".64" ; `Bigint, ".big"] in
   let () = (* check that all cases are handled here *)
     List.iter (function (`Const | #unary_int_op), _ -> () | _ -> assert false) unary_ops;
     List.iter (function #binary_int_op, _ -> () | _ -> assert false) binary_ops;
@@ -105,12 +105,12 @@ let unary_intops_by_name, binary_intops_by_name =
 
 let seqops_by_name op =
   List.fold_right (fun (ty,tyname) ->
-    StrMap.add (op ^ "-" ^ tyname) ty)
-    [`Array, "array"; `Bytevec, "bytevec"]
+    StrMap.add (op ^ tyname) ty)
+    [`Array, ""; `Bytevec, ".byte"]
     StrMap.empty
-let seq_get_by_name = seqops_by_name "get"
-let seq_set_by_name = seqops_by_name "set"
-let seq_len_by_name = seqops_by_name "len"
+let seq_get_by_name = seqops_by_name "load"
+let seq_set_by_name = seqops_by_name "store"
+let seq_len_by_name = seqops_by_name "length"
 
 (*
 (let
@@ -250,8 +250,8 @@ and parse_exp env (loc, sexp) = match sexp with
             List.fold_left (fun id s ->
               Longident.Ldot (id, s)) (Longident.Lident path1) pathrest)
 
-  | List ((_, Atom s) :: _) ->
-     fail loc "Unknown operation %s" s
+  | List ((_, Atom s) :: rest) ->
+     fail loc "Unknown %d-ary operation %s" (List.length rest) s
 
   | Atom s -> fail loc "bad syntax: %s" s
 

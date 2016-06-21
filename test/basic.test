@@ -1,0 +1,23 @@
+(test-undefined
+  (field 0 0))
+
+(test-differ
+  0 1)
+
+; a comment
+
+(test ; another comment
+  1 2)
+
+(test
+  (i.big 4983259873495873495734895) (i.big 4983259873495873495734895))
+
+(test
+  0 0)
+
+(test-differ
+  0 (block (tag 0) 42))
+
+(test
+  (block (tag 0) 42)
+  (block (tag 0) 42))

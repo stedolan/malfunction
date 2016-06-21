@@ -407,6 +407,10 @@ let setup_options options =
   Clflags.include_dirs := [Findlib.package_directory "zarith"];
   Clflags.inlining_report := false;
 
+  (* Hack: disable the "no cmx" warning for zarith *)
+  Warnings.parse_options false "-58";
+  assert (not (Warnings.is_active (Warnings.No_cmx_file "asdf")));
+
   (options |> List.iter @@ function
   | `Verbose ->
      Clflags.dump_lambda := true;

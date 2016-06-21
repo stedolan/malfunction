@@ -9,4 +9,4 @@ type value =
 | Int of intconst
 
 val eval : t -> value
-
+val render_value : value -> Malfunction_sexp.sexp

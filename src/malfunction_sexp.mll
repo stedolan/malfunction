@@ -51,6 +51,8 @@ let int = ['1'-'9'] ['0'-'9']* | '0'
 
 let string = '"' ([^ '\\' '"']* | ('\\' _))* '"'
 
+let comment = ';' [^ '\n']*
+
 (* FIXME: exceptions in int and str cases *)
 rule sexps acc = parse
 | ')'
@@ -67,6 +69,8 @@ rule sexps acc = parse
   { sexps (loc lexbuf (fun () -> Atom (Lexing.lexeme lexbuf)) :: acc) lexbuf }
 | '\n'
   { Lexing.new_line lexbuf; sexps acc lexbuf }
+| comment
+  { sexps acc lexbuf }
 | space
   { sexps acc lexbuf }
 | eof
@@ -77,6 +81,8 @@ rule sexps acc = parse
 and read_next_sexp = parse
 | '\n'
   { Lexing.new_line lexbuf; read_next_sexp lexbuf }
+| comment
+  { read_next_sexp lexbuf }
 | space
   { read_next_sexp lexbuf }
 | '('
