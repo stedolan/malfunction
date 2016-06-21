@@ -257,5 +257,18 @@ let rec render_value = let open Malfunction_sexp in function
   (loc, Atom "block")::
   (loc, List [loc, Atom "tag"; loc, Int tag]):: 
   List.map render_value (Array.to_list elems))
-| _ -> failwith "woops"
+| Vec (ty, vals) ->
+  loc, List ((loc, Atom (match ty with `Array -> "vector" | `Bytevec -> "vector.byte"))::
+              List.map render_value (Array.to_list vals))
+| Func f ->
+  loc, Atom "<function>"
+| Int (`Int n) ->
+  loc, Int n
+| Int (`Int32 n) ->
+  loc, List [loc, Atom "i.32"; loc, Atom (Int32.to_string n)]
+| Int (`Int64 n) ->
+  loc, List [loc, Atom "i.64"; loc, Atom (Int64.to_string n)]
+| Int (`Bigint n) ->
+  loc, List [loc, Atom "i.big"; loc, Atom (Z.to_string n)]
+
    

@@ -18,11 +18,16 @@ let repl () =
   let lexbuf = Lexing.from_channel stdin in
   let rec loop () =
     Printf.printf "# %!";
-    let _ = with_error_reporting Format.std_formatter 1 (fun () ->
-      Malfunction_parser.read_expression lexbuf
-      |> Malfunction_interpreter.eval; 0) in
+    with_error_reporting Format.std_formatter () (fun () ->
+      let exp = Malfunction_parser.read_expression lexbuf in
+      match Malfunction_interpreter.eval exp with
+      | v -> Format.printf "%a\n%!" Malfunction_sexp.print 
+         (Malfunction_interpreter.render_value v);
+         loop ()
+      | exception (Malfunction_interpreter.Error s) ->
+         Format.printf "Undefined behaviour: %s\n%!" s);
     loop () in
-  loop ()
+  try loop () with End_of_file -> ()
 
 let run mode options impl output =
   Findlib.init ();
@@ -41,7 +46,7 @@ let run mode options impl output =
   | `Eval, Some file ->
      0
   | `Eval, None ->
-     repl ()
+     repl (); 0
   | `Fmt, impl ->
      let lexbuf = Lexing.from_channel (match impl with Some f -> open_in f | None -> stdin) in
      Malfunction_sexp.(read_only_sexp lexbuf |> print Format.std_formatter);
