@@ -1,19 +1,5 @@
 open Malfunction
 
-let with_error_reporting f =
-  try f () with
-  | SyntaxError ((locstart, locend), msg) ->
-     let open Lexing in
-     if locstart.pos_lnum = locend.pos_lnum then
-       Printf.fprintf stderr "%s:%d:%d-%d: %s\n%!"
-         locstart.pos_fname locstart.pos_lnum (locstart.pos_cnum - locstart.pos_bol) (locend.pos_cnum - locend.pos_bol) msg
-     else
-       Printf.fprintf stderr "%s:%d:%d-%d:%d %s\n%!"
-         locstart.pos_fname locstart.pos_lnum (locstart.pos_cnum - locstart.pos_bol) locend.pos_lnum (locend.pos_cnum - locend.pos_bol) msg;
-     1
-  | x ->
-     Location.report_exception Format.std_formatter x;
-    1
 
 let usage () =
   Printf.fprintf stderr "usage: ?\n"; 2
@@ -22,20 +8,20 @@ let repl () =
   let lexbuf = Lexing.from_channel stdin in
   let rec loop () =
     Printf.printf "# %!";
-    let _ = with_error_reporting (fun () ->
+    let _ = with_error_reporting Format.std_formatter 1 (fun () ->
       Malfunction_parser.read_expression lexbuf
       |> Malfunction_interpreter.eval; 0) in
     loop () in
   loop ()
 
-let run mode impl output =
+let run mode options impl output =
   Findlib.init ();
   match mode, impl with
   | `Cmx, Some file ->
-     with_error_reporting (fun () -> let _ = Malfunction_compiler.compile_cmx file in 0)
+     with_error_reporting Format.std_formatter 1 (fun () -> let _ = Malfunction_compiler.compile_cmx file in 0)
   | `Compile, Some file ->
-     with_error_reporting (fun () -> 
-       let tmpfiles = Malfunction_compiler.compile_cmx file in
+     with_error_reporting Format.std_formatter 1 (fun () ->
+       let tmpfiles = Malfunction_compiler.compile_cmx ~options file in
        let output = match output with
          | None -> Compenv.output_prefix file
          | Some out -> out in
@@ -49,6 +35,7 @@ let run mode impl output =
   | `Fmt, impl ->
      let lexbuf = Lexing.from_channel (match impl with Some f -> open_in f | None -> stdin) in
      Malfunction_sexp.(read_only_sexp lexbuf |> print Format.std_formatter);
+     Format.printf "\n%!";
      0
   | _ -> usage ()
 
@@ -56,11 +43,13 @@ let run mode impl output =
 let rec parse_args args =
   let impl = ref None in
   let output = ref None in
+  let opts = ref [] in
   let rec parse_opts mode = function
+    | "-v" :: rest -> opts := `Verbose :: !opts; parse_opts mode rest
     | "-o" :: o :: rest -> output := Some o; parse_opts mode rest
     | i :: rest ->
        (match !impl with None -> (impl := Some i; parse_opts mode rest) | _ -> usage ())
-    | [] -> run mode !impl !output in
+    | [] -> run mode !opts !impl !output in
   match args with
   | "cmx" :: rest -> parse_opts `Cmx rest
   | "compile" :: rest -> parse_opts `Compile rest

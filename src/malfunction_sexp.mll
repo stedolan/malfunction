@@ -8,7 +8,12 @@ and rawsexp =
 | Int of int
 | List of sexp list
 
-let loc lexbuf x = ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), x)
+let loc lexbuf f =
+  let open Lexing in
+  let start = lexbuf.lex_start_p in
+  let r = f () in
+  ((start, lexbuf.lex_curr_p), r)
+
 let fail lexbuf s = raise (Malfunction.SyntaxError ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), s))
 
 let const_int s =
@@ -51,15 +56,15 @@ rule sexps acc = parse
 | ')'
   { List.rev acc }
 | '('
-  { sexps (loc lexbuf (List (sexps [] lexbuf)) :: acc) lexbuf }
+  { sexps (loc lexbuf (fun () -> List (sexps [] lexbuf)) :: acc) lexbuf }
 | string
-  { sexps (loc lexbuf (String (Scanf.sscanf (Lexing.lexeme lexbuf) "%S%!" (fun x -> x))) :: acc) lexbuf }
+  { sexps (loc lexbuf (fun () -> String (Scanf.sscanf (Lexing.lexeme lexbuf) "%S%!" (fun x -> x))) :: acc) lexbuf }
 | int
-  { sexps (loc lexbuf (const_int (Lexing.lexeme lexbuf)) :: acc) lexbuf }
+  { sexps (loc lexbuf (fun () -> const_int (Lexing.lexeme lexbuf)) :: acc) lexbuf }
 | '$' var
-  { sexps (loc lexbuf (var (Lexing.lexeme lexbuf)) :: acc) lexbuf }
+  { sexps (loc lexbuf (fun () -> var (Lexing.lexeme lexbuf)) :: acc) lexbuf }
 | atom
-  { sexps (loc lexbuf (Atom (Lexing.lexeme lexbuf)) :: acc) lexbuf }
+  { sexps (loc lexbuf (fun () -> Atom (Lexing.lexeme lexbuf)) :: acc) lexbuf }
 | '\n'
   { Lexing.new_line lexbuf; sexps acc lexbuf }
 | space
@@ -69,20 +74,24 @@ rule sexps acc = parse
 | _
   { fail lexbuf ("Lexical error on " ^ (Lexing.lexeme lexbuf)) }
 
-and read_only_sexp = parse
-| space* '('
-  { read_sexp_end (sexps [] lexbuf) lexbuf }
-| _
-  { fail lexbuf "File must begin with '('" }
-
-and read_sexp_end s = parse
-| (space | '\n')* eof
-  { loc lexbuf (List s) }
-| _
-  { fail lexbuf "File contains data past end of sexp" }
-
 and read_next_sexp = parse
-| space* '('
-  { loc lexbuf (List (sexps [] lexbuf)) }
+| '\n'
+  { Lexing.new_line lexbuf; read_next_sexp lexbuf }
+| space
+  { read_next_sexp lexbuf }
+| '('
+  { loc lexbuf (fun () -> List (sexps [] lexbuf)) }
+| eof
+  { raise End_of_file }
 | _
   { fail lexbuf "Sexp must start with '('" }
+
+{
+
+let read_only_sexp lexbuf =
+  let s = read_next_sexp lexbuf in
+  match read_next_sexp lexbuf with
+  | _ -> fail lexbuf "File must contain only one sexp"
+  | exception End_of_file -> s
+
+}

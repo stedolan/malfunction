@@ -271,5 +271,8 @@ let parse_mod (loc, sexp) = match sexp with
 let read_expression lexbuf =
   parse_exp StrMap.empty (Malfunction_sexp.read_next_sexp lexbuf)
 
+let parse_expression t =
+  parse_exp StrMap.empty t
+
 let read_module lexbuf =
   parse_mod (Malfunction_sexp.read_only_sexp lexbuf)
