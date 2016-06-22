@@ -11,6 +11,17 @@ compiler's guts that were never meant to see the light of day.
       (_ (apply (global $Pervasives $print_string) "Hello, world!\n"))
       (export))
 
+Malfunction requires OCaml 4.03 with flambda enabled, which you can
+get by doing:
+
+    opam switch 4.03.0+flambda
+
+Once you're on 4.03.0+flambda, you can compile and run the above
+example with
+
+    malfunction compile docs/helloworld.mlf -o hello
+    ./hello
+
 The syntax is based on s-expressions, and is designed to be easy to
 correctly generate, rather than to be particularly beautiful. For
 instance, there are no reserved words: all user-defined identifiers

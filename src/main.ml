@@ -72,4 +72,12 @@ let rec parse_args args =
   | "fmt" :: rest -> parse_opts `Fmt rest
   | _ -> usage ()
 
+let () =
+  if not Config.flambda then begin
+    Format.fprintf Format.err_formatter 
+      "Malfunction requires a version of OCaml with Flambda enabled\n\
+       Try \"opam switch 4.03.0+flambda\"\n";
+    exit 1
+  end
+
 let _ = exit (parse_args (List.tl (Array.to_list Sys.argv)))
