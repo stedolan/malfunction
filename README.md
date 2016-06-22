@@ -43,4 +43,4 @@ or [some examples](./docs)
 
 There's also an
 [experimental backend](https://github.com/stedolan/idris-malfunction)
-for the dependantly typed language [Idris](http://idris-lang.org).
+for the dependently typed language [Idris](http://idris-lang.org).
