@@ -6,13 +6,14 @@
 Malfunction does only very basic checking of syntax when loading a
 program. For any program which passes the syntax checker, Malfunction
 should do one of the following:
-  - Report it as having undefined behaviour in the interpreter (`malfunction eval`)
+
   - Produce exactly the same result in the intepreter (`malfunction eval`) and compiler (`malfunction compile`)
+  - Report it as having undefined behaviour in the interpreter (`malfunction eval`)
   - Fail to terminate in either the interpreter or the compiler
 
-The behaviour of the interpreter/compiler should agree with the text
-below, although for a more precise specification you should look at
-the
+The behaviour of the interpreter and compiler should agree with the
+text below, although for a more precise specification you should look
+at the
 [definition of the interpreter](../src/malfunction_interpreter.ml),
 which is straightforward (no bytecode or other efficiency tricks, just
 syntax-directed execution).
@@ -25,10 +26,10 @@ to merely crash.
 
 However, the interpreter should detect *all* undefined behaviour
 (Malfunction's semantics are kept quite simple to ensure that this is
-easily semi-decidable). If a program runs to completion in the
-intepreter producing a result, it is a bug in Malfunction if the
-compiled version of the same program either crashes or produces a
-different value, and [should be reported](https://github.com/stedolan/malfunction/issues).
+easy). If a program runs to completion in the intepreter producing a
+result, it is a bug in Malfunction if the compiled version of the same
+program either crashes or produces a different value, and
+[should be reported](https://github.com/stedolan/malfunction/issues).
 
 This doesn't apply to programs which link with OCaml code: if you use
 `(global ...)` to call an OCaml function, it's up to you to ensure
@@ -41,30 +42,256 @@ programs in the [test directory](../test).
 
 ## Basic syntax
 
-## Values
+Comments begin with `;` and continue to the end of the line.
 
-## Functions and evaluation order
+A Malfunction input file consists of a single
+s-expression. S-expressions (or "sexps") consist of `(`, a sequence of
+whitespace-separated elements, and `)`, where elements are:
+  - *Atoms*: sequences of ASCII letters, digits, or symbols (the exact set of allowed symbols isn't quite nailed down yet)
+  - *Variables*: `\$` followed by an atom
+  - *Strings*: double-quoted, with embedded `\` or `"` backslash-escaped
+  - *Integers*: sequences of digits with no leading zeros
+  - *s-expressions*: nested arbitrarily
 
-lambda
-apply
-curried
-at least one argument
+The top-level sexp must begin with the atom `module`, followed
+by a list of bindings (described under `let`, below), followed by an
+sexp beginning with the atom `export`.
+
+For inputs compiled with `malfunction compile` (that is, whole
+programs), the `export` sexp must be empty. For instance, a program
+which evaluates the single sexp `E` ignoring its result has this form:
+
+    (module
+      (_ E)
+      (export))
+
+Inputs compiled with `malfunction cmx` (that is, modules that are
+later linked with other modules) may specify any number of values in
+the `export` sexp, which must be in the same order as they are listed
+in the corresponding `.mli` file.
+
 
 ## Integers and arithmetic
 
+There are several integer types, and associated constant syntax:
+  - int, e.g. `42`
+  - int32, e.g. `(i.32 42)`
+  - int64, e.g. `(i.64 42)`
+  - bigint, e.g. `(i.big 42)`
+
+`int32` and `int64` use 32-bit and 64-bit two's complement arithmetic,
+with wrap on overflow. `int` uses either 31- or 63- bit two's
+complement arithmetic (depending on system word size, and also
+wrapping on overflow), and is generally fastest. `bigint` has arbitrary precision.
+
+
+Various integer operations are defined:
+
+  - *Arithmetic operations*: `+`, `-`, `*`, `/`, `%` (modulo), `neg` (unary negation)
+  - *Bitwise operations*: `&`, `|`, `^`, `<<`, `>>` (zero-shifting), `a>>` (sign extending)
+  - *Integer comparisons*: `<`, `>`, `<=`, `>=`, `==`
+
+All of these operations take one or two `int`s and return an `int`:
+
+    (+ 10 (* 20 3))
+    => 70
+
+    (<< 1 5)
+    => 32
+
+These operations come in `int32`, `int64` and `bigint` varieties,
+which may be used by suffixing `.32`, `.64` or `.big` to the operation
+name. The suffixed operations all take and return values of the
+specified integer type, except:
+
+  - the shift operators (`<<`, `>>`, `a>>`) whose second argument (shift count) is always `int`
+  - the comparison operators, whose result is always `int` (in fact, always `0` or `1`)
+
+For example,
+
+    (*.big (i.big 948324329804) (i.big 8493208402394))
+    => (i.big 8054316166085991599150776)
+
+    (>>.32 (i.32 32) 5)
+    => (i.32 1)
+
+Integer types are not automatically coerced, and behaviour is
+undefined if the wrong types are passed to an operation.
+
+
+## Functions
+
+Functions are defined using the following syntax, and close over all
+bindings in scope:
+
+    (lambda ($arg1 $arg2 $arg3) BODY)
+
+Functions are applied using the following syntax:
+
+    (apply FUNC ARG ARG ARG)
+
+Multiple-argument functions are implicitly curried, and may be
+partially applied (resulting in a closure) or applied to too many
+arguments (resulting in an application of the returned value). For
+instance,
+
+    (apply (apply (lambda ($a $b) (+ $a $b)) 20) 22)
+    => 42
+
+    (apply (lambda ($a) (lambda ($b) (+ $a $b))) 20 22)
+    => 42
+
+However, performance will be higher if functions are applied to
+exactly the right number of arguments.
+
+Evaluation is eager: functions and arguments are evaluated before
+their bodies.
+
 ## Bindings
 
-let
-letrec
-seq
+The atom `let` introduces a sequence of bindings:
+
+    (let BINDING BINDING BINDING ... BODY)
+
+Each binding is of one of the forms:
+
+  - `($var EXP)`: binds `$var` to the result of evaluating `EXP`. `$var` scopes over subsequent bindings and the body.
+  - `(_ EXP)`: evaluates `EXP` and ignores the result
+  - `(rec ($VAR1 EXP1) ($VAR2 EXP2) ...)`: binds each `$VAR` mutually
+    recursively. Each `EXP` must be of the form `(lambda
+    ...)`. Bindings scope over themselves, each other, subsequent
+    bindings, and the body
+
+For example, here is a definition of the "even" and "odd" predicates
+on `int`s, and an application of them to check whether 42 is even (see
+below for `if`):
+
+    (let
+      (rec
+        ($even (lambda ($n) (if (<= $n 1) (== $n 0) (apply $odd (- $n 1)))))
+        ($odd (lambda ($n) (if (<= $n 1) (== $n 1) (apply $even (- $n 1))))))
+      ($res (apply $even 42))
+      $res)
+    => 1
+
+The syntax `(seq EXP EXP...)` is equivalent to `(let (_ EXP) (_
+EXP)... EXP)`, and can be used to write sequences of imperative
+actions whose results are ignored.
 
 ## Blocks and fields
 
+Blocks (tuples) are constructed using `(block (tag N) EXP EXP EXP
+...)`, where `N` is a constant integer called the "tag" (an integer in
+the range 0-199 which may be used with `switch` below) and each `EXP`
+is a field of the resulting block.
+
+Fields are projected from a block using `(field N EXP)`, where `N` is
+an integer between 0 and one less than the length of the block.
+
+    (let
+      ($a (block (tag 0) 1 2 (block (tag 1) 0) 3))
+      ($b (block (tag 0) (field 2 $a) (field 0 $a)))
+      $b)
+    => (block (tag 0) (block (tag 1) 0) 1)
+
+Fields of blocks can only be accessed at constant, compile-time-known
+offsets. For random access into a structure, see "Vectors" below.
+
 ## Conditionals
+
+The general conditional expression is `switch`, of the form:
+
+    (switch EXP
+      (SEL SEL... EXP)
+      (SEL SEL... EXP)
+      ...)
+
+The first `EXP` is evaluated, and matched against each case in the
+order they appear. A case (of the form `(SEL SEL... EXP)`) matches if
+any of its selectors (`SEL`) match. The result of the switch is the
+result of evaluating the `EXP` of the first matching case. Selectors may be:
+
+  - `42`: integers, matching themselves. Only `int`, not `int32`,
+    `int64` or `bigint` may be matched. Use comparison operators,
+    which always return ints, to switch on other integer types.
+  - `(10 20)`: integer ranges, matching (in this example) any `n` where `10 <= n <= 20`
+  - `_`: default case, matching any *integer*
+  - `(tag 10)`: matches blocks with tag 10
+  - `(tag _)`: matches any block.
+
+Note that `_` matches only integers. To have a case handle all
+integers and all blocks, write `(_ (tag _) EXP)`.
+
+Selectors must be literal constants. To compare against runtime
+values, use comparison operators.
+
+For instance,
+
+    (let
+      ($sw (lambda ($n)
+        (switch $n
+          (5 (10 20) 100)
+          ((15 50) 200)
+          (_ 300)
+          ((tag 10) 400))))
+      ($a (apply $sw 5))
+      ($b (apply $sw 10))
+      ($c (apply $sw 50))
+      ($d (apply $sw 60))
+      ($e (apply $sw (block (tag 10))))
+      (block (tag 0) $a $b $c $d $e))
+    => (block (tag 0) 100 100 200 300 400)
+
+Behaviour is undefined if no cases match. If you are compiling a
+conditional statement to Malfunction and cannot prove that all cases
+are handled, you must add an explicit default case.
+
+The expression `(if A B C)` is equivalent to:
+
+    (switch A
+      (0 C)
+      (_ (tag _) B))
+
+That is, `C` is executed if `A` evaluates to zero, and `C` otherwise.
+
+Complex mixtures of conditions in `switch` expressions perform well -
+the OCaml compiler generates good code for pattern-matching.
 
 ## Vectors
 
+Vectors are mutable, fixed-length sequences of slots. The slots are
+numbered from 0 to one less than the length of the vector, and support
+random access.
+
+  - `(makevec LEN VAL)`: creates a vector of length `LEN` (must evaluate to a
+    nonnegative integer) initially containing the result of evaluating `VAL` in all slots.
+  - `(load VEC IDX)`: evaluates `VEC` (which must evaluate to a
+    vector) and `IDX` (which must evaluate to an integer), and returns
+    the value of the `IDX`'th slot (which must be in bounds).
+  - `(store VEC IDX VAL)`: evaluates `VEC` (a vector), `IDX` (an
+    in-bounds index) and `VAL`, and stores `VAL` in the `IDX`'th slot.
+  - `(length VEC)`: evaluates `VEC` (a vector) and returns its length.
+
+As well as standard vectors, byte vectors are also available. They
+have the same semantics as vectors, except that the operations are
+suffixed `.byte` (`makevec.byte`, etc.) and they may only be used to
+store integers in the range 0-255.
+
+Behaviour is undefined if byte vector operations are used on standard
+vectors, or vice versa.
+
+String literals (`"hello"`) return byte vectors.
+
 ## Accessing OCaml values
 
-global
-interpreter caveat
+OCaml values can be accessed from Malfunction programs by specifying a
+module path using `global`. For instance, the OCaml function
+`Pervasives.print_string` is referred to as `(global $Pervasives $print_string)`.
+
+As well as calling OCaml functions, certain OCaml values can be
+directly manipulated. The integer types `int`, `int32` and `int64`
+correspond to the OCaml types `int, `Int32.t` and `Int64.t`, OCaml
+tuples are blocks with tag 0, and OCaml algebraic data types are
+represented as a combination of ints and blocks as described in
+section
+[19.3.4 of the OCaml manual, "Concrete data types"](http://caml.inria.fr/pub/docs/manual-ocaml-4.00/manual033.html#htoc264).

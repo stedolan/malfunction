@@ -27,7 +27,8 @@ that their output won't go wrong, but don't need to explain
 their reasoning.
 
 For more, read the [spec](./docs/spec.md), or the
-[abstract submitted to the ML Workshop](http://www.cl.cam.ac.uk/~sd601/papers/malfunction.pdf).
+[abstract submitted to the ML Workshop](http://www.cl.cam.ac.uk/~sd601/papers/malfunction.pdf),
+or [some examples](./docs)
 
 There's also an
 [experimental backend](https://github.com/stedolan/idris-malfunction)
