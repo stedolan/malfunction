@@ -1,12 +1,9 @@
 (test-undefined
   (field 0 0))
 
-(test-differ
-  0 1)
-
 ; a comment
 
-(test ; another comment
+(test-differ ; another comment
   1 2)
 
 (test

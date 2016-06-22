@@ -93,11 +93,15 @@ Various integer operations are defined:
 
 All of these operations take one or two `int`s and return an `int`:
 
-    (+ 10 (* 20 3))
-    => 70
+```test
+(+ 10 (* 20 3))
+=> 70
+```
 
-    (<< 1 5)
-    => 32
+```test
+(<< 1 5)
+=> 32
+```
 
 These operations come in `int32`, `int64` and `bigint` varieties,
 which may be used by suffixing `.32`, `.64` or `.big` to the operation
@@ -109,11 +113,15 @@ specified integer type, except:
 
 For example,
 
-    (*.big (i.big 948324329804) (i.big 8493208402394))
-    => (i.big 8054316166085991599150776)
+```test
+(*.big (i.big 948324329804) (i.big 8493208402394))
+=> (i.big 8054316166085991599150776)
+```
 
-    (>>.32 (i.32 32) 5)
-    => (i.32 1)
+```test
+(>>.32 (i.32 32) 5)
+=> (i.32 1)
+```
 
 Integer types are not automatically coerced, and behaviour is
 undefined if the wrong types are passed to an operation.
@@ -135,11 +143,15 @@ partially applied (resulting in a closure) or applied to too many
 arguments (resulting in an application of the returned value). For
 instance,
 
-    (apply (apply (lambda ($a $b) (+ $a $b)) 20) 22)
-    => 42
+```test
+(apply (apply (lambda ($a $b) (+ $a $b)) 20) 22)
+=> 42
+```
 
-    (apply (lambda ($a) (lambda ($b) (+ $a $b))) 20 22)
-    => 42
+```test
+(apply (lambda ($a) (lambda ($b) (+ $a $b))) 20 22)
+=> 42
+```
 
 However, performance will be higher if functions are applied to
 exactly the right number of arguments.
@@ -166,13 +178,15 @@ For example, here is a definition of the "even" and "odd" predicates
 on `int`s, and an application of them to check whether 42 is even (see
 below for `if`):
 
-    (let
-      (rec
-        ($even (lambda ($n) (if (<= $n 1) (== $n 0) (apply $odd (- $n 1)))))
-        ($odd (lambda ($n) (if (<= $n 1) (== $n 1) (apply $even (- $n 1))))))
-      ($res (apply $even 42))
-      $res)
-    => 1
+```test
+(let
+  (rec
+    ($even (lambda ($n) (if (<= $n 1) (== $n 0) (apply $odd (- $n 1)))))
+    ($odd (lambda ($n) (if (<= $n 1) (== $n 1) (apply $even (- $n 1))))))
+  ($res (apply $even 42))
+  $res)
+=> 1
+```
 
 The syntax `(seq EXP EXP...)` is equivalent to `(let (_ EXP) (_
 EXP)... EXP)`, and can be used to write sequences of imperative
@@ -188,11 +202,13 @@ is a field of the resulting block.
 Fields are projected from a block using `(field N EXP)`, where `N` is
 an integer between 0 and one less than the length of the block.
 
-    (let
-      ($a (block (tag 0) 1 2 (block (tag 1) 0) 3))
-      ($b (block (tag 0) (field 2 $a) (field 0 $a)))
-      $b)
-    => (block (tag 0) (block (tag 1) 0) 1)
+```test
+(let
+  ($a (block (tag 0) 1 2 (block (tag 1) 0) 3))
+  ($b (block (tag 0) (field 2 $a) (field 0 $a)))
+  $b)
+=> (block (tag 0) (block (tag 1) 0) 1)
+```
 
 Fields of blocks can only be accessed at constant, compile-time-known
 offsets. For random access into a structure, see "Vectors" below.
@@ -227,20 +243,22 @@ values, use comparison operators.
 
 For instance,
 
-    (let
-      ($sw (lambda ($n)
-        (switch $n
-          (5 (10 20) 100)
-          ((15 50) 200)
-          (_ 300)
-          ((tag 10) 400))))
-      ($a (apply $sw 5))
-      ($b (apply $sw 10))
-      ($c (apply $sw 50))
-      ($d (apply $sw 60))
-      ($e (apply $sw (block (tag 10))))
-      (block (tag 0) $a $b $c $d $e))
-    => (block (tag 0) 100 100 200 300 400)
+```test
+(let
+  ($sw (lambda ($n)
+    (switch $n
+      (5 (10 20) 100)
+      ((15 50) 200)
+      (_ 300)
+      ((tag 10) 400))))
+  ($a (apply $sw 5))
+  ($b (apply $sw 10))
+  ($c (apply $sw 50))
+  ($d (apply $sw 60))
+  ($e (apply $sw (block (tag 10))))
+  (block (tag 0) $a $b $c $d $e))
+=> (block (tag 0) 100 100 200 300 400)
+```
 
 Behaviour is undefined if no cases match. If you are compiling a
 conditional statement to Malfunction and cannot prove that all cases

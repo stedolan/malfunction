@@ -87,6 +87,8 @@ and read_next_sexp = parse
   { read_next_sexp lexbuf }
 | '('
   { loc lexbuf (fun () -> List (sexps [] lexbuf)) }
+| int
+  { loc lexbuf (fun () -> const_int (Lexing.lexeme lexbuf)) }
 | eof
   { raise End_of_file }
 | _

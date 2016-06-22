@@ -3,3 +3,4 @@ S src/**
 PKG compiler-libs
 PKG zarith
 PKG findlib
+PKG omd

@@ -116,7 +116,7 @@ let run_tests cases =
         try List.hd (try_run_tests [x]) with
           HarnessFailed s -> `Crash s
 
-let run_file filename =
+let load_testcases filename =
   let lexbuf = Lexing.from_channel (open_in filename) in
   Lexing.(lexbuf.lex_curr_p <- {lexbuf.lex_curr_p with pos_fname = filename});
   let rec read_testcases acc =
@@ -136,11 +136,42 @@ let run_file filename =
                         Malfunction_parser.parse_expression (loc, Int 0)) :: acc)
     | loc, _ -> raise (Malfunction.SyntaxError (loc, "Bad test"))
     | exception End_of_file -> List.rev acc in
+  read_testcases []
+
+let load_testcases_markdown filename =
+  let chan = open_in filename in
+  let buflen = 1000 in
+  let rec read_all () =
+    let buf = Bytes.create buflen in
+    match input chan buf 0 buflen with
+    | 0 -> []
+    | n -> Bytes.sub_string buf 0 n :: read_all () in
+  let contents = String.concat "" (read_all ()) in
+  let parse_string s =
+    s |> Lexing.from_string |> Malfunction_sexp.read_only_sexp |> Malfunction_parser.parse_expression in
+  let dummy_loc =
+    let l = Lexing.{pos_fname = filename; pos_lnum = 0; pos_cnum = 0; pos_bol = 0} in
+    l,l in
+  let open Omd_representation in
+  let testcases = ref [] in
+  let _ = Omd.of_string contents |> visit @@ function
+    | Code_block ("test", s) ->
+       let open Str in
+       let (test, expect) = match split (regexp "\n=>") s with
+         | [t; e] -> (parse_string t, parse_string e)
+         | _ -> failwith @@ "Cannot parse testcase " ^ s in
+       testcases := (`Test, dummy_loc, test, expect) :: !testcases;
+       None
+    | _ ->
+       None in
+  List.rev !testcases
+
+let run_file parser filename =
   Format.printf "%s: %!" filename;
   match Malfunction.with_error_reporting (Format.std_formatter) None
-    (fun () -> Some (read_testcases []))
+    (fun () -> Some (parser filename))
   with
-  | None -> ()
+  | None -> Format.printf "parse error\n%!"; `SomeFailed
   | Some cases ->
      let results = cases
      |> List.map (fun (ty, loc, test, expect) ->
@@ -171,13 +202,32 @@ let run_file filename =
        | (`TestDiffer|`TestUndef), `Match -> say "values match when not expected to" end;
      in
      List.iter2 describe cases results;
-     Format.printf "\r%-25s [%d/%d] tests passed\n%!" (filename ^ ":") !passed (List.length cases)
+     Format.printf "\r%-25s [%d/%d] tests passed\n%!" (filename ^ ":") !passed (List.length cases);
+     if !passed = List.length cases then `AllPassed else `SomeFailed
+
+let rec run_all testfiles =
+  let combine a b = match a, b with `AllPassed, `AllPassed -> `AllPassed | _ -> `SomeFailed in
+  let result = ref `AllPassed in
+  for i = 0 to Array.length testfiles - 1 do
+    let file = testfiles.(i) in
+    let res =
+      if Sys.is_directory file then
+        run_all (Array.map (fun x -> file ^ Filename.dir_sep ^ x) (Sys.readdir file))
+      else if Filename.check_suffix file ".md" then
+        run_file load_testcases_markdown file
+      else if Filename.check_suffix file ".test" then
+        run_file load_testcases file
+      else
+        (Printf.printf "%s: unknown file extension, ignoring\n" file; `SomeFailed) in
+    result := combine res !result
+  done;
+  !result
 
 
 let () =
   match Sys.argv with
-  | [| me |] -> Format.printf "Usage: %s <test files>\n" me
+  | [| me |] -> Format.printf "Usage: %s <test files>\n" me; exit 1
   | _ ->
-     for i = 1 to Array.length Sys.argv - 1 do
-       run_file (Sys.argv.(i))
-     done
+     match run_all (Array.sub Sys.argv 1 (Array.length Sys.argv - 1)) with
+     | `SomeFailed -> Format.printf "Some tests failed\n%!"; exit 1
+     | `AllPassed -> Format.printf "All tests passed\n%!"; exit 0
