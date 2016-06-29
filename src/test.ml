@@ -7,15 +7,15 @@ let rec reify = function
 | Vec (`Array, xs) -> reify_block 0 xs
 | Vec (`Bytevec, xs) ->
    let to_char = function
-     | Int (`Int n) when 0 <= n && n < 256 ->
-        String.make 1 (Char.chr n)
+     | Int (`Int, n) when 0 <= Z.to_int n && Z.to_int n < 256 ->
+        String.make 1 (Char.chr (Z.to_int n))
      | _ -> raise (ReifyFailure "reify: noncharacter in string") in
    Obj.repr (String.concat "" (List.map to_char (Array.to_list xs)))
-| Int n -> Obj.(match n with
-  | `Int n -> repr n
-  | `Int32 n -> repr n
-  | `Int64 n -> repr n
-  | `Bigint n -> repr n)
+| Int (ty, n) -> Obj.(match ty with
+  | `Int -> repr (Z.to_int n)
+  | `Int32 -> repr (Z.to_int32 n)
+  | `Int64 -> repr (Z.to_int64 n)
+  | `Bigint -> repr n)
 | Func _ -> raise (ReifyFailure "reify: functional value")
 
 and reify_block n xs =

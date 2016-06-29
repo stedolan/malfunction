@@ -1,0 +1,31 @@
+(test (<< 3 5) 96)
+(test (>> 96 5) 3)
+(test (a>> 96 5) 3)
+
+; this test requires 2s-complement arithmetic,
+; but is independent of word size
+(test
+  (+ 1 (>> (neg 1) 1))
+  (^ (- 0 1) (>> (neg 1) 1)))
+
+(test (a>> (neg 96) 5) (neg 3))
+
+(test (a>> (neg 1) 5) (neg 1))
+(test (a>> 42 3) 5)
+(test (a>> (neg 42) 3) (neg 6))
+
+; shifting by negative numbers is undefined
+(test-undefined (<< 1 (neg 1)))
+(test-undefined (>> 1 (neg 1)))
+(test-undefined (a>> 1 (neg 1)))
+
+; shifting by large numbers is undefined
+(test-undefined (<< 1 113455345))
+(test-undefined (>> 1 113455345))
+(test-undefined (a>> 1 113455345))
+
+(test (<<.32 (i.32 1) 32) (i.32 0))
+(test-undefined (<<.32 (i.32 1) 33))
+(test (>>.32 (neg.32 (i.32 1)) 31) (i.32 1))
+(test (>>.32 (neg.32 (i.32 1)) 32) (i.32 0))
+(test-undefined (>>.32 (neg.32 (i.32 1)) 33))
