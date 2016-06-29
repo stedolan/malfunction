@@ -198,8 +198,9 @@ let run_file parser filename =
        | `TestUndef, `Undefined _
        | `TestDiffer, `Different -> incr passed
        | (`Test|`TestDiffer), `Undefined s -> say "undefined behaviour: %s" s
-       | (`Test|`TestUndef), `Different -> say "values don't match"
-       | (`TestDiffer|`TestUndef), `Match -> say "values match when not expected to" end;
+       | `TestUndef, (`Match|`Different) -> say "undefined behaviour not detected"
+       | `Test, `Different -> say "values don't match"
+       | `TestDiffer, `Match -> say "values match when not expected to" end;
      in
      List.iter2 describe cases results;
      Format.printf "\r%-25s [%d/%d] tests passed\n%!" (filename ^ ":") !passed (List.length cases);
