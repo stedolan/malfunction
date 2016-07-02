@@ -3,6 +3,99 @@ open Asttypes
 
 open Malfunction_parser
 
+(* List.map, but guarantees left-to-right evaluation *)
+let rec lrmap f = function
+| [] -> []
+| (x :: xs) -> let r = f x in r :: lrmap f xs
+
+(* Enforce left-to-right evaluation order by introducing 'let' bindings *)
+
+let rec reorder = function
+| Mvar _
+| Mlambda _
+| Mint _
+| Mstring _
+| Mglobal _ as t -> `Pure, t
+
+| Mapply (f, xs) ->
+   reorder_sub `Impure (fun ev ->
+     let f = ev f in
+     let xs = lrmap ev xs in
+     Mapply (f, xs))
+
+| Mlet (bindings, body) ->
+   let bindings = reorder_bindings bindings in
+   let _, body = reorder body in
+   `Impure, Mlet (bindings, body)
+
+| Mswitch (e, cases) ->
+   `Impure, Mswitch (snd (reorder e), List.map (fun (c, e) -> c, snd (reorder e)) cases)
+
+| Mintop1(op, ty, t) ->
+   reorder_sub `Pure (fun ev ->
+     Mintop1(op, ty, ev t))
+
+| Mintop2(op, ty, t1, t2) ->
+   reorder_sub `Pure (fun ev ->
+     let t1 = ev t1 in
+     let t2 = ev t2 in
+     Mintop2(op, ty, t1, t2))
+
+| Mvecnew(ty, len, def) ->
+   reorder_sub `Pure (fun ev ->
+     let len = ev len in
+     let def = ev def in
+     Mvecnew(ty, len, def))
+
+| Mvecget(ty, vec, idx) ->
+   reorder_sub `Impure (fun ev ->
+     let vec = ev vec in
+     let idx = ev idx in
+     Mvecget(ty, vec, idx))
+
+| Mvecset(ty, vec, idx, v) ->
+   reorder_sub `Impure (fun ev ->
+     let vec = ev vec in
+     let idx = ev idx in
+     let v = ev v in
+     Mvecset(ty, vec, idx, v))
+
+| Mveclen(ty, vec) ->
+   reorder_sub `Pure (fun ev ->
+     let vec = ev vec in
+     Mveclen(ty, vec))
+
+| Mblock (n, ts) ->
+   reorder_sub `Pure (fun ev ->
+     Mblock(n, lrmap ev ts))
+
+| Mfield (n, t) ->
+   reorder_sub `Impure (fun ev ->
+     Mfield (n, ev t))
+
+and reorder_bindings bindings =
+  bindings
+  |> lrmap (function
+    | `Unnamed t -> `Unnamed (snd (reorder t))
+    | `Named (v, t) -> `Named (v, snd (reorder t))
+    | `Recursive _ as ts -> ts (* must be functions *))
+
+and reorder_sub p f =
+  let bindings = ref [] in
+  let r = f (fun e ->
+    match reorder e with
+    | `Pure, e -> e
+    | `Impure, e ->
+       let id = Ident.create "tmp" in
+       bindings := (`Named (id, e)) :: !bindings;
+       Mvar id) in
+  match List.rev !bindings with
+  | [] -> p, r
+  | bindings -> `Impure, (Mlet (bindings, r))
+
+
+
+
 module IntSwitch = struct
 
   (* Convert a list of possibly-overlapping intervals to a list of disjoint intervals *)
@@ -182,9 +275,9 @@ let lookup env v =
   | Val_reg -> `Val (Lambda.transl_path (* ~loc:(parse_loc loc) *) env path)
   | Val_prim(p) ->
      let p = match p.prim_name with
-       | "%equal" -> 
+       | "%equal" ->
           Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true
-       | "%compare" -> 
+       | "%compare" ->
           Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true
        | s when s.[0] = '%' ->
           failwith ("unimplemented primitive " ^ p.prim_name);
@@ -433,9 +526,9 @@ let module_to_lambda ?options (Mmod (bindings, exports)) =
     arg in
 
   let env = Compmisc.initial_env () in
-  let code = 
-    bindings_to_lambda env bindings
-      (Lprim (Pmakeblock(0, Immutable), List.map (to_lambda env) exports)) in
+  let code =
+    bindings_to_lambda env (reorder_bindings bindings)
+      (Lprim (Pmakeblock(0, Immutable), List.map (fun e -> to_lambda env (snd (reorder e))) exports)) in
 
   let lambda = code
   |> print_if Clflags.dump_rawlambda Printlambda.lambda
@@ -528,7 +621,7 @@ let lambda_to_cmx ?options filename prefixname (size, code) =
   with e ->
     delete_temps !outfiles;
     raise e
-        
+
 
 let compile_cmx ?options filename =
   let prefixname = Compenv.output_prefix filename in
@@ -541,6 +634,5 @@ let compile_cmx ?options filename =
 
 let link_executable output tmpfiles =
   (* urgh *)
-  Sys.command (Printf.sprintf "ocamlfind ocamlopt -package zarith zarith.cmxa '%s' -o '%s'" 
+  Sys.command (Printf.sprintf "ocamlfind ocamlopt -package zarith zarith.cmxa '%s' -o '%s'"
                  tmpfiles.cmxfile output)
-

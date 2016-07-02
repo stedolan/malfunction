@@ -157,7 +157,8 @@ However, performance will be higher if functions are applied to
 exactly the right number of arguments.
 
 Evaluation is eager: functions and arguments are evaluated before
-their bodies.
+their bodies. The function is evaluated before the arguments, and
+arguments are evaluated left to right.
 
 ## Bindings
 
