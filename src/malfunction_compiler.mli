@@ -6,12 +6,9 @@ type outfiles = {
 }
 val delete_temps : outfiles -> unit 
 
-type options = [`Verbose] list
+type options = [`Verbose | `Shared] list
 
 val compile_cmx : ?options:options -> string -> outfiles
-
-
-
 
 type lambda_mod = int * Lambda.lambda
 
@@ -22,3 +19,5 @@ val lambda_to_cmx :
   string -> (* the prefix for the output filenames *)
   lambda_mod -> outfiles
 val link_executable : string -> outfiles -> int
+
+val compile_and_load : ?options:options -> Malfunction_parser.t -> Obj.t

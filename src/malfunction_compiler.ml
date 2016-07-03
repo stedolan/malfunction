@@ -506,6 +506,8 @@ let setup_options options =
   Clflags.keep_asm_file := false;
   Clflags.include_dirs := [Findlib.package_directory "zarith"];
   Clflags.inlining_report := false;
+  Clflags.dlcode := true;
+  Clflags.shared := false;
 
   (* Hack: disable the "no cmx" warning for zarith *)
   Warnings.parse_options false "-58";
@@ -516,7 +518,9 @@ let setup_options options =
      Clflags.dump_lambda := true;
      Clflags.dump_cmm := true;
      Clflags.keep_asm_file := true;
-     Clflags.inlining_report := true);
+     Clflags.inlining_report := true
+  | `Shared ->
+     Clflags.shared := true);
 
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   Compmisc.init_path true
@@ -565,17 +569,17 @@ let delete_temps { objfile; cmxfile; cmifile } =
   match cmifile with Some f -> Misc.remove_file f | None -> ()
 
 
-type options = [`Verbose] list
+type options = [`Verbose | `Shared] list
 
 
-let lambda_to_cmx ?options filename prefixname (size, code) =
+let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
   let ppf = Format.std_formatter in
   let outfiles = ref {
     cmxfile = prefixname ^ ".cmx";
     objfile = prefixname ^ Config.ext_obj;
     cmifile = None
   } in
-  setup_options (match options with Some l -> l | None -> []);
+  setup_options options;
   try
     let source_provenance = Timings.File filename in
     let modulename = Compenv.module_of_filename ppf filename prefixname in
@@ -626,14 +630,50 @@ let lambda_to_cmx ?options filename prefixname (size, code) =
     raise e
 
 
-let compile_cmx ?options filename =
+let compile_cmx ?(options=[]) filename =
   let prefixname = Compenv.output_prefix filename in
   let lexbuf = Lexing.from_channel (open_in filename) in
   Lexing.(lexbuf.lex_curr_p <-
             { lexbuf.lex_curr_p with pos_fname = filename });
   Malfunction_parser.read_module lexbuf
-  |> module_to_lambda ?options
-  |> lambda_to_cmx ?options filename prefixname
+  |> module_to_lambda ~options
+  |> lambda_to_cmx ~options filename prefixname
+
+
+(* copied from opttoploop.ml *)
+type res = Ok of Obj.t | Err of string
+external ndl_run_toplevel: string -> string -> res
+  = "caml_natdynlink_run_toplevel"
+external ndl_loadsym: string -> Obj.t = "caml_natdynlink_loadsym"
+
+let code_id = ref 0
+
+let compile_and_load ?(options : options =[]) e =
+  if not Dynlink.is_native then
+    failwith "Loading malfunction values works only in native code";
+  let tmpdir = Filename.temp_file "malfunction" ".tmp" in
+  (* more than a little horrible *)
+  Unix.unlink tmpdir;
+  Unix.mkdir tmpdir 0o700;
+  incr code_id;
+  let modname = "Malfunction_Code_" ^ string_of_int (!code_id) in
+  let prefix = tmpdir ^ Filename.dir_sep ^ String.uncapitalize_ascii modname in
+  let options = `Shared :: options in
+  let tmpfiles =
+    Mmod([], [e])
+    |> module_to_lambda ~options
+    |> lambda_to_cmx ~options "code" prefix in
+  let cmxs = prefix ^ ".cmxs" in
+  Asmlink.link_shared Format.err_formatter [tmpfiles.cmxfile] cmxs;
+  delete_temps tmpfiles;
+  (match ndl_run_toplevel cmxs modname with
+  | Ok _ -> ()
+  | Err s -> failwith ("loading failed: " ^ s));
+  Misc.remove_file cmxs;
+  Unix.rmdir tmpdir;
+  Obj.field (ndl_loadsym (Compilenv.symbol_for_global (Ident.create_persistent modname))) 0
+
+
 
 let link_executable output tmpfiles =
   (* urgh *)
