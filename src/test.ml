@@ -134,7 +134,7 @@ let load_testcases filename =
        read_testcases ((`TestUndef, loc,
                         Malfunction_parser.parse_expression test,
                         Malfunction_parser.parse_expression (loc, Int 0)) :: acc)
-    | loc, _ -> raise (Malfunction.SyntaxError (loc, "Bad test"))
+    | loc, _ -> raise (SyntaxError (loc, "Bad test"))
     | exception End_of_file -> List.rev acc in
   read_testcases []
 

@@ -1,4 +1,5 @@
 {
+exception SyntaxError of (Lexing.position * Lexing.position) * string
 type sexp =
   (Lexing.position * Lexing.position) * rawsexp
 and rawsexp =
@@ -14,7 +15,7 @@ let loc lexbuf f =
   let r = f () in
   ((start, lexbuf.lex_curr_p), r)
 
-let fail lexbuf s = raise (Malfunction.SyntaxError ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), s))
+let fail lexbuf s = raise (SyntaxError ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), s))
 
 let const_int s =
   match int_of_string s with

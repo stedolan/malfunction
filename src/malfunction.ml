@@ -1,8 +1,7 @@
-exception SyntaxError of (Lexing.position * Lexing.position) * string
 
 let with_error_reporting ppf def f =
   try f () with
-  | SyntaxError ((locstart, locend), msg) ->
+  | Malfunction_sexp.SyntaxError ((locstart, locend), msg) ->
      let open Lexing in
      if locstart.pos_lnum = locend.pos_lnum then
        Format.fprintf ppf "%s:%d:%d-%d: %s\n%!"

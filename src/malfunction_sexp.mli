@@ -1,3 +1,5 @@
+exception SyntaxError of (Lexing.position * Lexing.position) * string
+
 type sexp =
   (Lexing.position * Lexing.position) * rawsexp
 and rawsexp =
