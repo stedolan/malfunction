@@ -270,7 +270,10 @@ end
 let lookup env v =
   let open Types in
   let open Primitive in
-  let (path, descr) = Env.lookup_value (* ~loc:(parse_loc loc) *) v env in
+  let (path, descr) = try
+      Env.lookup_value (* ~loc:(parse_loc loc) *) v env
+    with
+      Not_found -> failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
   match descr.val_kind with
   | Val_reg -> `Val (Lambda.transl_path (* ~loc:(parse_loc loc) *) env path)
   | Val_prim(p) ->
