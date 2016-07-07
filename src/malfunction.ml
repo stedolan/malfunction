@@ -80,6 +80,30 @@ let lambda2 f =
 let if_ c tt ff =
   Mswitch (c, [[`Intrange(0,0)], ff; [`Intrange(min_int,max_int);`Deftag], tt])
 
+module IntArith = struct
+  let of_int n = Mint (`Int n)
+  let zero = of_int 0
+  let one = of_int 1
+  let (~-) a = Mintop1(`Neg, `Int, a)
+  let lnot a = Mintop1(`Not, `Int, a)
+  let (+) a b = Mintop2(`Add, `Int, a, b)
+  let (-) a b = Mintop2(`Sub, `Int, a, b)
+  let ( * ) a b = Mintop2(`Mul, `Int, a, b)
+  let (/) a b = Mintop2(`Div, `Int, a, b)
+  let (mod) a b = Mintop2(`Mod, `Int, a, b)
+  let (land) a b = Mintop2(`And, `Int, a, b)
+  let (lor) a b = Mintop2(`Or, `Int, a, b)
+  let (lxor) a b = Mintop2(`Xor, `Int, a, b)
+  let (lsl) a b = Mintop2(`Lsl, `Int, a, b)
+  let (lsr) a b = Mintop2(`Lsr, `Int, a, b)
+  let (asr) a b = Mintop2(`Asr, `Int, a, b)
+  let (<) a b = Mintop2(`Lt, `Int, a, b)
+  let (>) a b = Mintop2(`Gt, `Int, a, b)
+  let (<=) a b = Mintop2(`Lte, `Int, a, b)
+  let (>=) a b = Mintop2(`Gte, `Int, a, b)
+  let (=) a b = Mintop2(`Eq, `Int, a, b)
+end
+
 let with_error_reporting ppf def f =
   try f () with
   | Malfunction_sexp.SyntaxError ((locstart, locend), msg) ->
@@ -94,3 +118,4 @@ let with_error_reporting ppf def f =
   | x ->
      Location.report_exception ppf x;
     def
+

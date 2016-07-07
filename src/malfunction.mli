@@ -64,6 +64,30 @@ val lambda2 : (t -> t -> t) -> t
 
 val if_ : t -> t -> t -> t
 
+module IntArith : sig
+  val zero : t
+  val one : t
+  val of_int : int -> t
+  val (~-) : t -> t
+  val lnot : t -> t
+  val (+) : t -> t -> t
+  val (-) : t -> t -> t
+  val ( * ) : t -> t -> t
+  val (/) : t -> t -> t
+  val (mod) : t -> t -> t
+  val (land) : t -> t -> t
+  val (lor) : t -> t -> t
+  val (lxor) : t -> t -> t
+  val (lsl) : t -> t -> t
+  val (lsr) : t -> t -> t
+  val (asr) : t -> t -> t
+  val (<) : t -> t -> t
+  val (>) : t -> t -> t
+  val (<=) : t -> t -> t
+  val (>=) : t -> t -> t
+  val (=) : t -> t -> t
+end
+
 (* utility function to catch errors from parsing and compilation *)
 val with_error_reporting : Format.formatter -> 'a -> (unit -> 'a) -> 'a
 
