@@ -1,3 +1,4 @@
+open Malfunction
 open Malfunction_parser
 open Malfunction_interpreter
 

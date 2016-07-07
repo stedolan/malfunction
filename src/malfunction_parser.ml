@@ -1,57 +1,6 @@
 open Malfunction
 open Malfunction_sexp
 
-type inttype = [`Int | `Int32 | `Int64 | `Bigint]
-type intconst = [`Int of int | `Int32 of Int32.t | `Int64 of Int64.t | `Bigint of Z.t]
-type unary_int_op =
-  [`Neg | `Not]
-type binary_int_op =
-  [ `Add | `Sub | `Mul | `Div | `Mod
-  | `And | `Or | `Xor | `Lsl | `Lsr | `Asr
-  | `Lt | `Gt | `Lte | `Gte | `Eq ]
-
-type vector_type =
-  [`Array | `Bytevec]
-type mutability =
-  [ `Imm | `Mut ]
-
-type block_tag = int
-let max_tag = 200
-let tag_of_int n =
-  if 0 <= n && n < max_tag then
-    n
-  else
-    invalid_arg "tag out of range"
-
-type t =
-| Mvar of Ident.t
-| Mlambda of Ident.t list * t
-| Mapply of t * t list
-| Mlet of binding list * t
-| Mint of intconst
-| Mstring of string
-| Mglobal of Longident.t
-| Mswitch of t * (case list * t) list
-
-(* Integers *)
-| Mintop1 of unary_int_op * inttype * t
-| Mintop2 of binary_int_op * inttype * t * t
-
-(* Vectors *)
-| Mvecnew of vector_type * t * t
-| Mvecget of vector_type * t * t
-| Mvecset of vector_type * t * t * t
-| Mveclen of vector_type * t
-
-(* Blocks *)
-| Mblock of int * t list
-| Mfield of int * t
-
-and binding =
-  [ `Unnamed of t | `Named of Ident.t * t | `Recursive of (Ident.t * t) list ]
-
-and case = [`Tag of int | `Deftag | `Intrange of int * int]
-
 type moduleexp =
 | Mmod of binding list * t list
 
@@ -83,7 +32,7 @@ let parse_arglist = function
 
 let parse_tag = function
 | loc, List [_, Atom "tag"; _, Int n] ->
-   if 0 <= n && n < max_tag then n else fail loc "tag %d out of range [0,%d]" n (max_tag-1)
+   if 0 <= n && n < (max_tag :> int) then n else fail loc "tag %d out of range [0,%d]" n ((max_tag :> int)-1)
 | loc, _ -> fail loc "invalid tag"
 
 let unary_intops_by_name, binary_intops_by_name =

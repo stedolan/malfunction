@@ -1,6 +1,7 @@
 open Lambda
 open Asttypes
 
+open Malfunction
 open Malfunction_parser
 
 (* List.map, but guarantees left-to-right evaluation *)
@@ -508,6 +509,12 @@ let setup_options options =
   Clflags.inlining_report := false;
   Clflags.dlcode := true;
   Clflags.shared := false;
+
+  Clflags.(
+    default_simplify_rounds := 2;
+    use_inlining_arguments_set o2_arguments;
+    use_inlining_arguments_set ~round:0 o1_arguments);
+
 
   (* Hack: disable the "no cmx" warning for zarith *)
   Warnings.parse_options false "-58";

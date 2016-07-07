@@ -1,4 +1,4 @@
-open Malfunction_parser
+open Malfunction
 
 type value =
 | Block of int * value array

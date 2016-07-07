@@ -1,4 +1,4 @@
-open Malfunction_parser
+open Malfunction
 
 exception Error of string
 

@@ -20,4 +20,4 @@ val lambda_to_cmx :
   lambda_mod -> outfiles
 val link_executable : string -> outfiles -> int
 
-val compile_and_load : ?options:options -> Malfunction_parser.t -> Obj.t
+val compile_and_load : ?options:options -> Malfunction.t -> Obj.t
