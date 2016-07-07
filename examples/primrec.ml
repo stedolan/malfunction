@@ -1,7 +1,7 @@
 (* Staged compilation of primitive-recursive arithmetic.
 
    After installing malfunction with `opam pin`, build using
-       ocamlbuild -use-ocamlfind docs/primrec.native *)
+       ocamlbuild -use-ocamlfind examples/primrec.native *)
 
 (* Natural numbers (at type level) *)
 type zero = [`Zero]
@@ -16,7 +16,7 @@ type _ v =
 (* Well-scoped terms of PRA, with variables as de Bruijn indices.
 
    PRA includes constants, successor, variables, let, and recursion.
-   Recursion defines a function on naturals by giving f 0, and 
+   Recursion defines a function on naturals by giving f 0, and
    f (n + 1) in terms of both n and f n. *)
 type 'a t =
 | K : int -> 'a t
@@ -36,7 +36,7 @@ let v4 = V (SV (SV (SV (SV ZV))))
 
 (* Addition, multiplication and exponentiation.
    Bonus points if you can figure out why 'v4' and 'v1' are correct.
-   (de Bruijn indices are awful) 
+   (de Bruijn indices are awful)
 
    These are eta-expanded with () to get around the value restriction.
    We want them to be polymorphic so that they work in any environment.
@@ -90,7 +90,7 @@ type 'a menv =
 | Local : 'a menv * Malfunction.t -> ('a suc) menv
 
 module I = Malfunction.IntArith
-let rec compile : type k . k t -> k menv -> Malfunction.t = 
+let rec compile : type k . k t -> k menv -> Malfunction.t =
   fun t env -> let open Malfunction in match t with
   | K n ->
      I.of_int n
@@ -136,7 +136,7 @@ let _ =
 let benchmark name exec =
   let env a b = Cons(Cons(Eps, a), b) in
   (* to ensure same data for both implementations *)
-  Random.init 432789; 
+  Random.init 432789;
   let tstart = Unix.gettimeofday () in
   for i = 1 to 50 do
     let a = Random.int 100 and b = Random.int 5 in
