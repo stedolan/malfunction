@@ -16,8 +16,11 @@ get by doing:
 
     opam switch 4.03.0+flambda
 
-Once you're on 4.03.0+flambda, you can compile and run the above
-example with
+Then, install malfunction using:
+
+    opam pin add malfunction git://github.com/stedolan/malfunction.git
+
+You can then compile and run the above example with:
 
     malfunction compile docs/helloworld.mlf -o hello
     ./hello
