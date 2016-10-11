@@ -39,7 +39,7 @@ let rec print ppf (_, s) = let open Format in match s with
 
 let space = [' ' '\t' '\r']*
 
-let symbol = ['.' '&' '|' '+' '-' '!' '@' '#' '%' '^' '*' '~' '?' '{' '}' '<' '>' '=']
+let symbol = ['.' '&' '|' '+' '/' '-' '!' '@' '#' '%' '^' '*' '~' '?' '{' '}' '<' '>' '=']
 
 let atomsymbol = ['+' '-' '<' '>']
 let letter = ['a'-'z' 'A'-'Z' '_']
