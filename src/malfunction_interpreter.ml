@@ -147,6 +147,8 @@ let rec interpret locals env : t -> value = function
           | `Eq -> cmp = 0 in
         Int (`Int, if res then Z.one else Z.zero)
      end
+  | Mconvert (src, dst, e) ->
+     truncate dst (as_ty src (interpret locals env e))
   | Mvecnew (ty, len, def) ->
      (match ty, interpret locals env len, interpret locals env def with
      | `Array, Int (`Int, len), v ->
@@ -199,18 +201,17 @@ let loc =
 let rec render_value = let open Malfunction_sexp in function
 | Block (tag, elems) -> loc, List (
   (loc, Atom "block")::
-  (loc, List [loc, Atom "tag"; loc, Int tag])::
+  (loc, List [loc, Atom "tag"; loc, Atom (string_of_int tag)])::
   List.map render_value (Array.to_list elems))
 | Vec (ty, vals) ->
   loc, List ((loc, Atom (match ty with `Array -> "vector" | `Bytevec -> "vector.byte"))::
               List.map render_value (Array.to_list vals))
 | Func f ->
   loc, Atom "<function>"
-| Int (`Int, n) ->
-  loc, Int (Z.to_int n)
-| Int (`Int32, n) ->
-  loc, List [loc, Atom "i.32"; loc, Atom (Z.to_string n)]
-| Int (`Int64, n) ->
-  loc, List [loc, Atom "i.64"; loc, Atom (Z.to_string n)]
-| Int (`Bigint, n) ->
-  loc, List [loc, Atom "i.big"; loc, Atom (Z.to_string n)]
+| Int (ty, n) ->
+   let ty = match ty with
+     | `Int -> ""
+     | `Int32 -> ".i32"
+     | `Int64 -> ".i64"
+     | `Bigint -> ".ibig" in
+   loc, Atom (Z.to_string n ^ ty)

@@ -134,7 +134,7 @@ let load_testcases filename =
     | loc, List [_, Atom "test-undefined"; test] ->
        read_testcases ((`TestUndef, loc,
                         Malfunction_parser.parse_expression test,
-                        Malfunction_parser.parse_expression (loc, Int 0)) :: acc)
+                        Malfunction_parser.parse_expression (loc, Atom "0")) :: acc)
     | loc, _ -> raise (SyntaxError (loc, "Bad test"))
     | exception End_of_file -> List.rev acc in
   read_testcases []

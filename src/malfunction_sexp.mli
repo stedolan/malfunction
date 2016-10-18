@@ -6,7 +6,6 @@ and rawsexp =
 | Atom of string
 | Var of string
 | String of string
-| Int of int
 | List of sexp list
 
 val read_next_sexp : Lexing.lexbuf -> sexp

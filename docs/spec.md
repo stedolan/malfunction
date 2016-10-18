@@ -9,7 +9,7 @@ should do one of the following:
 
   - Produce exactly the same result in the intepreter (`malfunction eval`) and compiler (`malfunction compile`)
   - Report it as having undefined behaviour in the interpreter (`malfunction eval`)
-  - Fail to terminate in either the interpreter or the compiler
+  - Fail to terminate in both the interpreter and the compiler
 
 The behaviour of the interpreter and compiler should agree with the
 text below, although for a more precise specification you should look
@@ -50,7 +50,6 @@ whitespace-separated elements, and `)`, where elements are:
   - *Atoms*: sequences of ASCII letters, digits, or symbols (the exact set of allowed symbols isn't quite nailed down yet)
   - *Variables*: `\$` followed by an atom
   - *Strings*: double-quoted, with embedded `\` or `"` backslash-escaped
-  - *Integers*: sequences of digits with no leading zeros
   - *s-expressions*: nested arbitrarily
 
 The top-level sexp must begin with the atom `module`, followed
@@ -75,9 +74,9 @@ in the corresponding `.mli` file.
 
 There are several integer types, and associated constant syntax:
   - int, e.g. `42`
-  - int32, e.g. `(i.32 42)`
-  - int64, e.g. `(i.64 42)`
-  - bigint, e.g. `(i.big 42)`
+  - int32, e.g. `42.i32`
+  - int64, e.g. `42.i64`
+  - bigint, e.g. `42.ibig`
 
 `int32` and `int64` use 32-bit and 64-bit two's complement arithmetic,
 with wrap on overflow. `int` uses either 31- or 63- bit two's
@@ -114,18 +113,24 @@ specified integer type, except:
 For example,
 
 ```test
-(*.big (i.big 948324329804) (i.big 8493208402394))
-=> (i.big 8054316166085991599150776)
+(*.ibig 948324329804.ibig 8493208402394.ibig)
+=> 8054316166085991599150776.ibig
 ```
 
 ```test
-(>>.32 (i.32 32) 5)
-=> (i.32 1)
+(>>.i32 32.i32 5)
+=> 1.i32
 ```
 
 Integer types are not automatically coerced, and behaviour is
-undefined if the wrong types are passed to an operation.
+undefined if the wrong types are passed to an operation. Explicit
+conversions are done with `convert.FROM.TO`, which sign-extend from
+smaller to larger types and truncate from larger to smaller:
 
+```test
+(convert.i32.i64 42.i32)
+=> 42.i64
+```
 
 ## Functions
 

@@ -38,6 +38,7 @@ type t =
 (* Integers *)
 | Mintop1 of unary_int_op * inttype * t
 | Mintop2 of binary_int_op * inttype * t * t
+| Mconvert of inttype * inttype * t
 
 (* Vectors *)
 | Mvecnew of vector_type * t * t

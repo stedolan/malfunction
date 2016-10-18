@@ -6,7 +6,6 @@ and rawsexp =
 | Atom of string
 | Var of string
 | String of string
-| Int of int
 | List of sexp list
 
 let loc lexbuf f =
@@ -17,13 +16,6 @@ let loc lexbuf f =
 
 let fail lexbuf s = raise (SyntaxError ((lexbuf.Lexing.lex_start_p, lexbuf.Lexing.lex_curr_p), s))
 
-let const_int s =
-  match int_of_string s with
-  | n -> Int n
-  | exception (Failure _) ->
-     (* large integers are represented as atoms *)
-     Atom s
-
 let var s =
   assert (s.[0] = '$');
   Var (String.sub s 1 (String.length s - 1))
@@ -31,7 +23,6 @@ let var s =
 let rec print ppf (_, s) = let open Format in match s with
   | Atom s -> fprintf ppf "%s" s
   | Var s -> fprintf ppf "$%s" s
-  | Int n -> fprintf ppf "%d" n
   | String s -> fprintf ppf "%S" s
   | List l ->
      fprintf ppf "@[<2>(%a)@]" (pp_print_list ~pp_sep:pp_print_space print) l
@@ -48,8 +39,6 @@ let digit = ['0' - '9']
 let atom = (letter | digit | symbol)*
 let var = (['a'-'z' 'A'-'Z' '_' '0'-'9' '$'] | symbol)+
 
-let int = ['1'-'9'] ['0'-'9']* | '0'
-
 let string = '"' ([^ '\\' '"']* | ('\\' _))* '"'
 
 let comment = ';' [^ '\n']*
@@ -62,8 +51,6 @@ rule sexps acc = parse
   { sexps (loc lexbuf (fun () -> List (sexps [] lexbuf)) :: acc) lexbuf }
 | string
   { sexps (loc lexbuf (fun () -> String (Scanf.sscanf (Lexing.lexeme lexbuf) "%S%!" (fun x -> x))) :: acc) lexbuf }
-| int
-  { sexps (loc lexbuf (fun () -> const_int (Lexing.lexeme lexbuf)) :: acc) lexbuf }
 | '$' var
   { sexps (loc lexbuf (fun () -> var (Lexing.lexeme lexbuf)) :: acc) lexbuf }
 | atom
@@ -88,8 +75,8 @@ and read_next_sexp = parse
   { read_next_sexp lexbuf }
 | '('
   { loc lexbuf (fun () -> List (sexps [] lexbuf)) }
-| int
-  { loc lexbuf (fun () -> const_int (Lexing.lexeme lexbuf)) }
+| atom
+  { loc lexbuf (fun () -> Atom (Lexing.lexeme lexbuf)) }
 | eof
   { raise End_of_file }
 | _

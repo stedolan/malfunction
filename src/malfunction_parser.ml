@@ -31,27 +31,38 @@ let parse_arglist = function
   | loc, _ -> fail loc "Expected a list of atoms"
 
 let parse_tag = function
-| loc, List [_, Atom "tag"; _, Int n] ->
-   if 0 <= n && n < (max_tag :> int) then n else fail loc "tag %d out of range [0,%d]" n ((max_tag :> int)-1)
+| loc, List [_, Atom "tag"; _, Atom n] ->
+   begin match int_of_string n with
+   | n when 0 <= n && n < (max_tag :> int) -> n
+   | n -> fail loc "tag %d out of range [0,%d]" n ((max_tag :> int)-1)
+   | exception (Failure _) -> fail loc "invalid tag %s" n end
 | loc, _ -> fail loc "invalid tag"
 
-let unary_intops_by_name, binary_intops_by_name =
-  let unary_ops = [ `Neg, "neg"; `Not, "not"; `Const, "i" ] in
+let numtypes = [`Int, ".int" ; `Int32, ".i32" ; `Int64, ".i64" ; `Bigint, ".ibig"]
+
+let unary_intops_by_name, binary_intops_by_name, conversions_by_name, numtypes_by_name =
+  let unary_ops = [ `Neg, "neg"; `Not, "not" ] in
   let binary_ops =
     [ `Add, "+" ; `Sub, "-" ; `Mul, "*" ; `Div, "/" ; `Mod, "%" ;
       `And, "&" ; `Or, "|" ; `Xor, "^" ; `Lsl, "<<" ; `Lsr, ">>"  ; `Asr, "a>>" ;
       `Lt, "<" ; `Gt, ">" ; `Lte, "<=" ; `Gte, ">=" ; `Eq, "==" ] in
-  let types = [`Int, "" ; `Int32, ".32" ; `Int64, ".64" ; `Bigint, ".big"] in
+  let deftypes = (`Int, "") :: numtypes in
   let () = (* check that all cases are handled here *)
-    List.iter (function (`Const | #unary_int_op), _ -> () | _ -> assert false) unary_ops;
+    List.iter (function #unary_int_op, _ -> () | _ -> assert false) unary_ops;
     List.iter (function #binary_int_op, _ -> () | _ -> assert false) binary_ops;
-    List.iter (function #inttype, _ -> () | _ -> assert false) types in
+    List.iter (function #inttype, _ -> () | _ -> assert false) numtypes in
   List.fold_right (fun (ty,tyname) ->
     List.fold_right (fun (op,opname) ->
-      StrMap.add (opname ^ tyname) (op, ty)) unary_ops) types StrMap.empty,
+      StrMap.add (opname ^ tyname) (op, ty)) unary_ops) deftypes StrMap.empty,
   List.fold_right (fun (ty,tyname) ->
     List.fold_right (fun (op,opname) ->
-      StrMap.add (opname ^ tyname) (op, ty)) binary_ops) types StrMap.empty
+      StrMap.add (opname ^ tyname) (op, ty)) binary_ops) deftypes StrMap.empty,
+  List.fold_right (fun (op1, opname1) ->
+    List.fold_right (fun (op2, opname2) ->
+      StrMap.add ("convert" ^ opname1 ^ opname2) (op1, op2)) numtypes) numtypes StrMap.empty,
+  List.fold_right (fun (ty, name) ->
+      StrMap.add name ty) numtypes StrMap.empty
+
 
 let vecops_by_name op =
   List.fold_right (fun (ty,tyname) ->
@@ -123,13 +134,14 @@ and parse_exp env (loc, sexp) = match sexp with
      to_let [] exps
 
   | List ((_, Atom "switch") :: exp :: cases) ->
-     let parse_selector = function
+     let parse_selector s = try match s with
        | _, List [_, Atom "tag"; _, Atom "_"] -> `Deftag
        | _, List ([_, Atom "tag"; _]) as t -> `Tag (parse_tag t)
-       | _, Int n -> `Intrange (n, n)
-       | _, List [_, Int min; _, Int max] -> `Intrange (min, max)
+       | _, List [_, Atom min; _, Atom max] -> `Intrange (int_of_string min, int_of_string max)
        | _, Atom "_" -> `Intrange (min_int, max_int)
-       | loc, _ -> fail loc "invalid selector" in
+       | _, Atom n -> `Intrange (int_of_string n, int_of_string n)
+       | loc, _ -> fail loc "invalid selector"
+       with Failure _ -> fail loc "invalid selector" in
 
      let rec parse_case loc acc = function
        | [s; e] -> List.rev (parse_selector s :: acc), parse_exp env e
@@ -151,24 +163,16 @@ and parse_exp env (loc, sexp) = match sexp with
                [`Intrange (min_int, max_int); `Deftag], parse_exp env tt])
 
   | List [_, Atom s; e] when StrMap.mem s unary_intops_by_name ->
-     let validate_const (pi, ps) = function
-       | _, Int n -> Mint (pi n)
-       | loc, Atom s -> (try Mint (ps s) with Failure _ | Invalid_argument _ -> 
-         fail loc "invalid literal %s" s)
-       | loc, _ -> fail loc "invalid literal" in
-     let const_parser = function
-       | `Int -> (fun x -> `Int x), (fun x -> `Int (int_of_string x))
-       | `Int32 -> (fun x -> `Int32 (Int32.of_int x)), (fun x -> `Int32 (Int32.of_string x)) 
-       | `Int64 -> (fun x -> `Int64 (Int64.of_int x)), (fun x -> `Int64 (Int64.of_string x))
-       | `Bigint -> (fun x -> `Bigint (Z.of_int x)), (fun x -> `Bigint (Z.of_string x)) in
-     begin match StrMap.find s unary_intops_by_name with
-     | (`Neg | `Not) as op, ty -> Mintop1 (op, ty, parse_exp env e)
-     | `Const, ty -> validate_const (const_parser ty) e
-     end
+     let (op, ty) = StrMap.find s unary_intops_by_name in
+     Mintop1 (op, ty, parse_exp env e)
 
   | List [_, Atom s; e1; e2] when StrMap.mem s binary_intops_by_name ->
      let (op, ty) = StrMap.find s binary_intops_by_name in
      Mintop2 (op, ty, parse_exp env e1, parse_exp env e2)
+
+  | List [_, Atom s; e1] when StrMap.mem s conversions_by_name ->
+     let (ty1, ty2) = StrMap.find s conversions_by_name in
+     Mconvert (ty1, ty2, parse_exp env e1)
 
   | List [_, Atom op; len; def] when StrMap.mem op vec_new_by_name ->
      Mvecnew (StrMap.find op vec_new_by_name, parse_exp env len, parse_exp env def)
@@ -185,11 +189,12 @@ and parse_exp env (loc, sexp) = match sexp with
   | List ((_, Atom "block") :: tag :: fields) ->
      Mblock (parse_tag tag, List.map (parse_exp env) fields)
 
-  | List [_, Atom "field"; _, Int n; e] ->
+  | List [_, Atom "field"; _, Atom n; e] ->
+     let n = match int_of_string n with
+       | n -> n
+       | exception (Failure _) -> fail loc "invalid field number" in
      Mfield (n, parse_exp env e)
 
-  | Int k ->
-     Mint (`Int k)
   | String s ->
      Mstring s
 
@@ -207,7 +212,25 @@ and parse_exp env (loc, sexp) = match sexp with
   | List ((_, Atom s) :: rest) ->
      fail loc "Unknown %d-ary operation %s" (List.length rest) s
 
-  | Atom s -> fail loc "bad syntax: %s" s
+  | Atom s ->
+     let s, ext = match String.rindex s '.' with
+       | i ->
+          String.sub s 0 i,
+          String.sub s i (String.length s - i)
+       | exception Not_found ->
+          s, ".int" in
+     begin
+       try match StrMap.find ext numtypes_by_name with
+       | `Int -> Mint (`Int (int_of_string s))
+       | `Int32 -> Mint (`Int32 (Int32.of_string s))
+       | `Int64 -> Mint (`Int64 (Int64.of_string s))
+       | `Bigint -> Mint (`Bigint (Z.of_string s))
+       with
+       | Not_found ->
+          fail loc "unknown constant type: '%s'" ext
+       | Invalid_argument _ | Failure _ ->
+          fail loc "constant '%s' out of bounds for '%s'" s ext
+     end
 
   | _ -> fail loc "syntax error"
 

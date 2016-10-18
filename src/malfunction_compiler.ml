@@ -42,6 +42,10 @@ let rec reorder = function
      let t2 = ev t2 in
      Mintop2(op, ty, t1, t2))
 
+| Mconvert(src, dst, t) -> 
+   reorder_sub `Pure (fun ev ->
+     Mconvert(src, dst, ev t))
+
 | Mvecnew(ty, len, def) ->
    reorder_sub `Pure (fun ev ->
      let len = ev len in
@@ -460,6 +464,57 @@ let rec to_lambda env = function
        | `Lt -> "lt" | `Gt -> "gt"
        | `Lte -> "leq" | `Gte -> "geq" | `Eq -> "equal" in
      builtin env ["Z"; fn] [e1; e2]
+  | Mconvert (src, dst, e) ->
+     let e = to_lambda env e in
+     begin match src, dst with
+       | `Bigint, `Bigint
+       | `Int, `Int
+       | `Int32, `Int32
+       | `Int64, `Int64 -> e
+       | `Bigint, ((`Int|`Int32|`Int64) as dst) ->
+          (* Zarith raises exceptions on overflow, but we truncate conversions. Not fast. *)
+          let width = match dst with 
+            | `Int -> Sys.word_size - 1
+            | `Int32 -> 32
+            | `Int64 -> 64 in
+          let range_id = Ident.create "range" in
+          let range = Z.(shift_left (of_int 1) width) in
+          let masked_id = Ident.create "masked" in
+          let truncated =
+            Llet (Strict, range_id, 
+                  builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string range))],
+            Llet (Strict, masked_id,
+                  builtin env ["Z"; "logand"] [e;
+                      builtin env ["Z"; "sub"] [Lvar range_id;
+                                                Lconst (Const_base (Const_int 1))]],
+            Lifthenelse (builtin env ["Z"; "testbit"] 
+                                 [Lvar masked_id; Lconst (Const_base (Const_int (width - 1)))],
+                         builtin env ["Z"; "sub"] [Lvar masked_id; Lvar range_id],
+                         Lvar masked_id))) in
+          let fn = match dst with
+            | `Int -> "to_int"
+            | `Int32 -> "to_int32"
+            | `Int64 -> "to_int64" in
+          builtin env ["Z"; fn] [truncated]
+       | ((`Int|`Int32|`Int64) as src), `Bigint ->
+          let fn = match src with
+            | `Int -> "of_int"
+            | `Int32 -> "of_int32"
+            | `Int64 -> "of_int64" in
+          builtin env ["Z"; fn] [e]
+       | `Int, `Int32 ->
+          Lprim (Pbintofint Pint32, [e])
+       | `Int, `Int64 ->
+          Lprim (Pbintofint Pint64, [e])
+       | `Int32, `Int ->
+          Lprim (Pintofbint Pint32, [e])
+       | `Int64, `Int ->
+          Lprim (Pintofbint Pint64, [e])
+       | `Int32, `Int64 ->
+          Lprim (Pcvtbint(Pint32, Pint64), [e])
+       | `Int64, `Int32 ->
+          Lprim (Pcvtbint(Pint64, Pint32), [e])
+     end
   | Mvecnew (`Array, len, def) ->
      builtin env ["Array"; "make"] [to_lambda env len; to_lambda env def]
   | Mvecnew (`Bytevec, len, def) ->
@@ -485,7 +540,7 @@ let rec to_lambda env = function
   | Mblock (tag, vals) ->
      Lprim (Pmakeblock(tag, Immutable), List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
-     Lprim (Pfield(idx), [to_lambda env e])
+      Lprim (Pfield(idx), [to_lambda env e])
 
 and bindings_to_lambda env bindings body =
   List.fold_right (fun b rest -> match b with
