@@ -12,6 +12,7 @@ available: [ ocaml-version >= "4.03" ]
 depends: [
   "ocamlbuild" {build}
   "ocamlfind" {build}
+  "cppo" {build}
   "topkg" {build & >= "0.7.4"}
   "omd" {test}
   "zarith"

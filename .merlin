@@ -4,3 +4,4 @@ PKG compiler-libs
 PKG zarith
 PKG findlib
 PKG omd
+PKG topkg

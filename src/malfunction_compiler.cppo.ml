@@ -99,7 +99,26 @@ and reorder_sub p f =
   | bindings -> `Impure, (Mlet (bindings, r))
 
 
+let lprim p args =
+#if OCAML_VERSION = (4, 03, 0)
+  Lprim (p, args)
+#else
+  Lprim (p, args, Location.none)
+#endif
 
+let llet id exp body =
+#if OCAML_VERSION = (4, 03, 0)
+  Llet (Strict, id, exp, body)
+#else
+  Llet (Strict, Pgenval, id, exp, body)
+#endif
+
+let pmakeblock tag mut =
+#if OCAML_VERSION = (4, 03, 0)
+  Pmakeblock (tag, mut)
+#else
+  Pmakeblock (tag, mut, None)
+#endif
 
 module IntSwitch = struct
 
@@ -202,10 +221,10 @@ module IntSwitch = struct
 
     type act = Lambda.lambda
 
-    let make_prim p args = Lprim (p,args)
+    let make_prim p args = lprim p args
     let make_offset arg n = match n with
     | 0 -> arg
-    | _ -> Lprim (Poffsetint n,[arg])
+    | _ -> lprim (Poffsetint n) [arg]
 
     let bind arg body =
       let newvar,newarg = match arg with
@@ -215,8 +234,8 @@ module IntSwitch = struct
           newvar,Lvar newvar in
       bind Alias newvar arg (body newarg)
     let make_const i = Lconst (Const_base (Const_int i))
-    let make_isout h arg = Lprim (Pisout, [h ; arg])
-    let make_isin h arg = Lprim (Pnot,[make_isout h arg])
+    let make_isout h arg = lprim Pisout [h ; arg]
+    let make_isin h arg = lprim Pnot [make_isout h arg]
     let make_if cond ifso ifnot = Lifthenelse (cond, ifso, ifnot)
     let make_switch arg cases acts =
       let l = ref [] in
@@ -312,7 +331,7 @@ let builtin env path args =
        ap_specialised = Default_specialise
      }
   | `Prim p ->
-     Lprim (Pccall p, args)
+     lprim (Pccall p) args
 
 let rec to_lambda env = function
   | Mvar v ->
@@ -326,7 +345,10 @@ let rec to_lambda env = function
          inline = Default_inline;
          specialise = Default_specialise;
          is_a_functor = false
-       }
+       };
+#if OCAML_VERSION > (4, 03, 0)
+       loc = Location.none;
+#endif
      }
   | Mapply (fn, args) ->
      let ap_func fn =
@@ -343,7 +365,7 @@ let rec to_lambda env = function
         (match lookup env v with
         | `Val v -> ap_func v
         | `Prim p ->
-           Lprim (Pccall p, List.map (to_lambda env) args))
+           lprim (Pccall p) (List.map (to_lambda env) args))
      | fn ->
         ap_func (to_lambda env fn))
   | Mlet (bindings, body) ->
@@ -384,7 +406,7 @@ let rec to_lambda env = function
             | (`Intrange _, _) as c :: cases -> partition (c :: ints, tags, deftag) cases in
           let (intcases, tagcases, deftag) = partition ([],[],None) (List.rev acc) in
           let id = Ident.create "switch" in
-          Llet (Strict, id, scr,
+          llet id scr (
             let scr = Lvar id in
             let tagswitch = match tagcases, deftag with
               | [], None -> None
@@ -406,7 +428,7 @@ let rec to_lambda env = function
             | None, None -> assert false
             | None, Some e | Some e, None -> e
             | Some eint, Some etag ->
-               Lifthenelse (Lprim (Pisint, [scr]), eint, etag)) in
+               Lifthenelse (lprim Pisint [scr], eint, etag)) in
      (match cases with
      | [[`Intrange (0, 0)], ezero; _, enonzero]
      | [_, enonzero; [`Intrange (0, 0)], ezero] ->
@@ -418,15 +440,15 @@ let rec to_lambda env = function
      let ones32 = Const_base (Asttypes.Const_int32 (Int32.of_int (-1))) in
      let ones64 = Const_base (Asttypes.Const_int64 (Int64.of_int (-1))) in
      let code = match op, ty with
-       | `Neg, `Int -> Lprim (Pnegint, [e])
-       | `Neg, `Int32 -> Lprim (Pnegbint Pint32, [e])
-       | `Neg, `Int64 -> Lprim (Pnegbint Pint64, [e])
+       | `Neg, `Int -> lprim Pnegint [e]
+       | `Neg, `Int32 -> lprim (Pnegbint Pint32) [e]
+       | `Neg, `Int64 -> lprim (Pnegbint Pint64) [e]
        | `Neg, `Bigint -> builtin env ["Z"; "neg"] [e]
-       | `Not, `Int -> Lprim (Pnot, [e])
+       | `Not, `Int -> lprim Pnot [e]
        | `Not, `Int32 ->
-          Lprim (Pxorbint Pint32, [e; Lconst ones32])
+          lprim (Pxorbint Pint32) [e; Lconst ones32]
        | `Not, `Int64 ->
-          Lprim (Pxorbint Pint64, [e; Lconst ones64])
+          lprim (Pxorbint Pint64) [e; Lconst ones64]
        | `Not, `Bigint -> builtin env ["Z"; "lognot"] [e] in
      code
   | Mintop2 (op, ((`Int|`Int32|`Int64) as ty), e1, e2) ->
@@ -435,8 +457,12 @@ let rec to_lambda env = function
      let prim = match ty with
        | `Int ->
           (match op with
-            `Add -> Paddint | `Sub -> Psubint
-          | `Mul -> Pmulint | `Div -> Pdivint | `Mod -> Pmodint
+            `Add -> Paddint | `Sub -> Psubint | `Mul -> Pmulint
+#if OCAML_VERSION = (4, 03, 0)
+          | `Div -> Pdivint | `Mod -> Pmodint
+#else
+          | `Div -> Pdivint Safe | `Mod -> Pmodint Safe
+#endif
           | `And -> Pandint | `Or -> Porint | `Xor -> Pxorint
           | `Lsl -> Plslint | `Lsr -> Plsrint | `Asr -> Pasrint
           | `Lt -> Pintcomp Clt | `Gt -> Pintcomp Cgt
@@ -445,14 +471,19 @@ let rec to_lambda env = function
        | (`Int32 | `Int64) as ty ->
           let t = match ty with `Int32 -> Pint32  | `Int64 -> Pint64 in
           (match op with
-            `Add -> Paddbint t | `Sub -> Psubbint t
-          | `Mul -> Pmulbint t | `Div -> Pdivbint t | `Mod -> Pmodbint t
+            `Add -> Paddbint t | `Sub -> Psubbint t | `Mul -> Pmulbint t
+#if OCAML_VERSION = (4, 03, 0)
+          | `Div -> Pdivbint t | `Mod -> Pmodbint t
+#else
+          | `Div -> Pdivbint { size = t; is_safe = Safe }
+          | `Mod -> Pmodbint { size = t; is_safe = Safe }
+#endif
           | `And -> Pandbint t | `Or -> Porbint t | `Xor -> Pxorbint t
           | `Lsl -> Plslbint t | `Lsr -> Plsrbint t | `Asr -> Pasrbint t
           | `Lt -> Pbintcomp (t, Clt) | `Gt -> Pbintcomp (t, Cgt)
           | `Lte -> Pbintcomp (t, Cle) | `Gte -> Pbintcomp (t, Cge)
           | `Eq -> Pbintcomp (t, Ceq)) in
-     Lprim (prim, [e1; e2])
+     lprim prim [e1; e2]
   | Mintop2 (op, `Bigint, e1, e2) ->
      let e1 = to_lambda env e1 in
      let e2 = to_lambda env e2 in
@@ -481,13 +512,13 @@ let rec to_lambda env = function
           let range = Z.(shift_left (of_int 1) width) in
           let masked_id = Ident.create "masked" in
           let truncated =
-            Llet (Strict, range_id, 
-                  builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string range))],
-            Llet (Strict, masked_id,
-                  builtin env ["Z"; "logand"] [e;
+            llet range_id 
+                 (builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string range))])
+            (llet masked_id
+                 (builtin env ["Z"; "logand"] [e;
                       builtin env ["Z"; "sub"] [Lvar range_id;
-                                                Lconst (Const_base (Const_int 1))]],
-            Lifthenelse (builtin env ["Z"; "testbit"] 
+                                                Lconst (Const_base (Const_int 1))]])
+            (Lifthenelse (builtin env ["Z"; "testbit"] 
                                  [Lvar masked_id; Lconst (Const_base (Const_int (width - 1)))],
                          builtin env ["Z"; "sub"] [Lvar masked_id; Lvar range_id],
                          Lvar masked_id))) in
@@ -503,17 +534,17 @@ let rec to_lambda env = function
             | `Int64 -> "of_int64" in
           builtin env ["Z"; fn] [e]
        | `Int, `Int32 ->
-          Lprim (Pbintofint Pint32, [e])
+          lprim (Pbintofint Pint32) [e]
        | `Int, `Int64 ->
-          Lprim (Pbintofint Pint64, [e])
+          lprim (Pbintofint Pint64) [e]
        | `Int32, `Int ->
-          Lprim (Pintofbint Pint32, [e])
+          lprim (Pintofbint Pint32) [e]
        | `Int64, `Int ->
-          Lprim (Pintofbint Pint64, [e])
+          lprim (Pintofbint Pint64) [e]
        | `Int32, `Int64 ->
-          Lprim (Pcvtbint(Pint32, Pint64), [e])
+          lprim (Pcvtbint(Pint32, Pint64)) [e]
        | `Int64, `Int32 ->
-          Lprim (Pcvtbint(Pint64, Pint32), [e])
+          lprim (Pcvtbint(Pint64, Pint32)) [e]
      end
   | Mvecnew (`Array, len, def) ->
      builtin env ["Array"; "make"] [to_lambda env len; to_lambda env def]
@@ -522,32 +553,44 @@ let rec to_lambda env = function
   | Mvecget (ty, vec, idx) ->
      let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
+#if OCAML_VERSION = (4, 03, 0)
        | `Bytevec -> Pstringrefs
+#else
+       | `Bytevec -> Pbytesrefs
+#endif
 (*       | `Floatvec -> Parrayrefs Pfloatarray *) in
-     Lprim (prim, [to_lambda env vec; to_lambda env idx])
+     lprim prim [to_lambda env vec; to_lambda env idx]
   | Mvecset (ty, vec, idx, v) ->
      let prim = match ty with
        | `Array -> Parraysets Paddrarray
+#if OCAML_VERSION = (4, 03, 0)
        | `Bytevec -> Pstringsets
+#else
+       | `Bytevec -> Pbytessets
+#endif
 (*       | `Floatvec -> Parraysets Pfloatarray *) in
-     Lprim (prim, [to_lambda env vec; to_lambda env idx; to_lambda env v])
+     lprim prim [to_lambda env vec; to_lambda env idx; to_lambda env v]
   | Mveclen (ty, vec) ->
      let prim = match ty with
        | `Array -> Parraylength Paddrarray
+#if OCAML_VERSION = (4, 03, 0)
        | `Bytevec -> Pstringlength
+#else
+       | `Bytevec -> Pbyteslength
+#endif
 (*       | `Floatvec -> Parraylength Pfloatarray *) in
-     Lprim (prim, [to_lambda env vec])
+     lprim prim [to_lambda env vec]
   | Mblock (tag, vals) ->
-     Lprim (Pmakeblock(tag, Immutable), List.map (to_lambda env) vals)
+     lprim (pmakeblock tag Immutable) (List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
-      Lprim (Pfield(idx), [to_lambda env e])
+      lprim (Pfield(idx)) [to_lambda env e]
 
 and bindings_to_lambda env bindings body =
   List.fold_right (fun b rest -> match b with
   | `Unnamed e ->
      Lsequence (to_lambda env e, rest)
   | `Named (n, e) ->
-     Llet (Strict, n, to_lambda env e, rest)
+     llet n (to_lambda env e) rest
   | `Recursive bs ->
      Lletrec (List.map (fun (n, e) -> (n, to_lambda env e)) bs, rest))
     bindings body
@@ -597,11 +640,15 @@ let module_to_lambda ?options (Mmod (bindings, exports)) =
   let env = Compmisc.initial_env () in
   let code =
     bindings_to_lambda env (reorder_bindings bindings)
-      (Lprim (Pmakeblock(0, Immutable), List.map (fun e -> to_lambda env (snd (reorder e))) exports)) in
+      (lprim (pmakeblock 0 Immutable) (List.map (fun e -> to_lambda env (snd (reorder e))) exports)) in
 
   let lambda = code
   |> print_if Clflags.dump_rawlambda Printlambda.lambda
+#if OCAML_VERSION = (4, 03, 0)
   |> Simplif.simplify_lambda
+#else
+  |> Simplif.simplify_lambda "malfunction"
+#endif
   |> print_if Clflags.dump_lambda Printlambda.lambda in
 
   (List.length exports, lambda)
@@ -652,7 +699,14 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
     ignore (match Misc.find_in_path_uncap !Config.load_path cmi with
         | file -> Env.read_signature modulename file
         | exception Not_found ->
-           let mlifile = Misc.chop_extension_if_any filename ^ !Config.interface_suffix in
+           let chop_ext =
+             #if OCAML_VERSION = (4, 03, 0)
+               Misc.chop_extension_if_any
+             #else
+               Misc.chop_extensions
+             #endif
+             in
+           let mlifile = chop_ext filename ^ !Config.interface_suffix in
            if Sys.file_exists mlifile then
              Typemod.(raise(Error(Location.in_file filename,
                                   Env.empty,
@@ -683,6 +737,10 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
         ~source_provenance
         prefixname
         ~backend
+#if OCAML_VERSION > (4, 03, 0)
+        (* FIXME: may need to add modules referenced only by "external" to this *)
+        ~required_globals:(Ident.Set.of_list (Env.get_required_globals ()))
+#endif
         ppf;
     Compilenv.save_unit_info !outfiles.cmxfile;
     Warnings.check_fatal ();
