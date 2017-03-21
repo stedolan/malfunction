@@ -1,5 +1,0 @@
-description = ""
-version = "0.1"
-requires = "zarith compiler-libs.optcomp findlib"
-archive(byte) = "malfunction.cma"
-archive(native) = "malfunction.cmxa"

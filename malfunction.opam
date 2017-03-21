@@ -6,14 +6,12 @@ bug-reports: "https://github.com/stedolan/malfunction/issues"
 dev-repo: "https://github.com/stedolan/malfunction.git"
 license: "LGPL"
 build:
-[[ "ocaml" "pkg/pkg.ml" "build"
-           "--pinned" "%{pinned}%"]]
+[[ "jbuilder" "build" "--only-packages" "%{name}%" "--root" "." "-j" jobs "@install" ]]
 available: [ ocaml-version >= "4.03" ]
 depends: [
-  "ocamlbuild" {build}
-  "ocamlfind" {build}
+  "ocamlfind"
+  "jbuilder" {build}
   "cppo" {build}
-  "topkg" {build & >= "0.7.4"}
   "omd" {test}
   "zarith"
 ]

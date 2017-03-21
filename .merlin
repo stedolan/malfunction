@@ -1,7 +1,0 @@
-B _build/**
-S src/**
-PKG compiler-libs
-PKG zarith
-PKG findlib
-PKG omd
-PKG topkg

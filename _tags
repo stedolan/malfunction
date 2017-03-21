@@ -1,5 +1,0 @@
-true: bin_annot, debug
-<examples/primrec.*>: package(malfunction)
-<{src,examples}/**.{ml,mli,native}>: package(compiler-libs.optcomp), package(str), package(zarith), package(findlib), package(dynlink), package(unix), warn(@8), cppo_V_OCAML
-<src/test.*>: package(unix), package(str), package(omd)
-"examples"| "idris": -traverse, not_hygienic
