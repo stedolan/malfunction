@@ -32,3 +32,7 @@
   (deps (test.exe ../docs/spec.md (glob_files ../test/*.test)))
   (action (run ${<} ../docs/spec.md ../test))))
 
+(alias
+ ((name runtest)
+  (deps (../test_cli/test.sh malfunction_main.exe (files_recursively_in ../test_cli)))
+  (action (run ${<} malfunction_main.exe ${OCAMLOPT}))))
