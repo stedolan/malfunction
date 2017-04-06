@@ -7,6 +7,8 @@ dev-repo: "https://github.com/stedolan/malfunction.git"
 license: "LGPL"
 build:
 [[ "jbuilder" "build" "--only-packages" "%{name}%" "--root" "." "-j" jobs "@install" ]]
+build-test:
+[[ "jbuilder" "build" "--only-packages" "%{name}%" "--root" "." "-j" jobs "@runtest" ]]
 available: [ ocaml-version >= "4.03" ]
 depends: [
   "ocamlfind"
