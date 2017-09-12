@@ -345,6 +345,9 @@ let rec to_lambda env = function
          inline = Default_inline;
          specialise = Default_specialise;
          is_a_functor = false
+#if OCAML_VERSION > (4, 04, 0)
+         ; stub = false
+#endif
        };
 #if OCAML_VERSION > (4, 03, 0)
        loc = Location.none;

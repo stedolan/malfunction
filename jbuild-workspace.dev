@@ -1,2 +1,3 @@
 (context ((switch 4.03.0+flambda) (merlin)))
 (context ((switch 4.04.0+flambda)))
+(context ((switch 4.05.0+flambda)))

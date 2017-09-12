@@ -11,10 +11,10 @@ compiler's guts that were never meant to see the light of day.
       (_ (apply (global $Pervasives $print_string) "Hello, world!\n"))
       (export))
 
-Malfunction requires OCaml 4.03 with flambda enabled, which you can
-get by doing:
+Malfunction requires a recent version of OCaml with flambda enabled,
+which you can get by doing:
 
-    opam switch 4.03.0+flambda
+    opam switch 4.05.0+flambda
 
 Then, install malfunction using:
 
