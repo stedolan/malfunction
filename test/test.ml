@@ -220,7 +220,7 @@ let rec run_all testfiles =
       else if Filename.check_suffix file ".test" then
         run_file load_testcases file
       else
-        (Printf.printf "%s: unknown file extension, ignoring\n" file; `SomeFailed) in
+        `AllPassed in
     result := combine res !result
   done;
   !result
