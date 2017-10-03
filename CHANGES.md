@@ -1,3 +1,9 @@
+v0.2.1 (3rd October 2017)
+---------------------
+
+Fix build bug with OCaml 4.04.2
+
+
 v0.2 (12th September 2017)
 ---------------------
 

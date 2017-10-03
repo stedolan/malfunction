@@ -100,21 +100,21 @@ and reorder_sub p f =
 
 
 let lprim p args =
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
   Lprim (p, args)
 #else
   Lprim (p, args, Location.none)
 #endif
 
 let llet id exp body =
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
   Llet (Strict, id, exp, body)
 #else
   Llet (Strict, Pgenval, id, exp, body)
 #endif
 
 let pmakeblock tag mut =
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
   Pmakeblock (tag, mut)
 #else
   Pmakeblock (tag, mut, None)
@@ -345,11 +345,11 @@ let rec to_lambda env = function
          inline = Default_inline;
          specialise = Default_specialise;
          is_a_functor = false
-#if OCAML_VERSION > (4, 04, 0)
+#if OCAML_VERSION >= (4, 05, 0)
          ; stub = false
 #endif
        };
-#if OCAML_VERSION > (4, 03, 0)
+#if OCAML_VERSION >= (4, 04, 0)
        loc = Location.none;
 #endif
      }
@@ -461,7 +461,7 @@ let rec to_lambda env = function
        | `Int ->
           (match op with
             `Add -> Paddint | `Sub -> Psubint | `Mul -> Pmulint
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
           | `Div -> Pdivint | `Mod -> Pmodint
 #else
           | `Div -> Pdivint Safe | `Mod -> Pmodint Safe
@@ -475,7 +475,7 @@ let rec to_lambda env = function
           let t = match ty with `Int32 -> Pint32  | `Int64 -> Pint64 in
           (match op with
             `Add -> Paddbint t | `Sub -> Psubbint t | `Mul -> Pmulbint t
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
           | `Div -> Pdivbint t | `Mod -> Pmodbint t
 #else
           | `Div -> Pdivbint { size = t; is_safe = Safe }
@@ -556,7 +556,7 @@ let rec to_lambda env = function
   | Mvecget (ty, vec, idx) ->
      let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
        | `Bytevec -> Pstringrefs
 #else
        | `Bytevec -> Pbytesrefs
@@ -566,7 +566,7 @@ let rec to_lambda env = function
   | Mvecset (ty, vec, idx, v) ->
      let prim = match ty with
        | `Array -> Parraysets Paddrarray
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
        | `Bytevec -> Pstringsets
 #else
        | `Bytevec -> Pbytessets
@@ -576,7 +576,7 @@ let rec to_lambda env = function
   | Mveclen (ty, vec) ->
      let prim = match ty with
        | `Array -> Parraylength Paddrarray
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
        | `Bytevec -> Pstringlength
 #else
        | `Bytevec -> Pbyteslength
@@ -647,7 +647,7 @@ let module_to_lambda ?options (Mmod (bindings, exports)) =
 
   let lambda = code
   |> print_if Clflags.dump_rawlambda Printlambda.lambda
-#if OCAML_VERSION = (4, 03, 0)
+#if OCAML_VERSION < (4, 04, 0)
   |> Simplif.simplify_lambda
 #else
   |> Simplif.simplify_lambda "malfunction"
@@ -703,7 +703,7 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
         | file -> Env.read_signature modulename file
         | exception Not_found ->
            let chop_ext =
-             #if OCAML_VERSION = (4, 03, 0)
+             #if OCAML_VERSION < (4, 04, 0)
                Misc.chop_extension_if_any
              #else
                Misc.chop_extensions
@@ -740,7 +740,7 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
         ~source_provenance
         prefixname
         ~backend
-#if OCAML_VERSION > (4, 03, 0)
+#if OCAML_VERSION >= (4, 04, 0)
         (* FIXME: may need to add modules referenced only by "external" to this *)
         ~required_globals:(Ident.Set.of_list (Env.get_required_globals ()))
 #endif
