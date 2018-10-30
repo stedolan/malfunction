@@ -38,25 +38,33 @@ let parse_tag = function
    | exception (Failure _) -> fail loc "invalid tag %s" n end
 | loc, _ -> fail loc "invalid tag"
 
-let numtypes = [`Int, ".int" ; `Int32, ".i32" ; `Int64, ".i64" ; `Bigint, ".ibig"]
+let inttypes = [`Int, ".int" ; `Int32, ".i32" ; `Int64, ".i64" ; `Bigint, ".ibig"]
+let numtypes = inttypes @ [`Float64, ".f64"]
 
-let unary_intops_by_name, binary_intops_by_name, conversions_by_name, numtypes_by_name =
+let (unary_intops_by_name : (unary_num_op * numtype) StrMap.t),
+    (binary_intops_by_name : (binary_num_op * numtype) StrMap.t),
+    (conversions_by_name : (numtype * numtype) StrMap.t),
+    (numtypes_by_name : numtype StrMap.t) =
   let unary_ops = [ `Neg, "neg"; `Not, "not" ] in
+  let binarith_ops = [ `Add, "+" ; `Sub, "-" ; `Mul, "*" ; `Div, "/" ; `Mod, "%" ] in
+  let bitwise_ops = [ `And, "&" ; `Or, "|" ; `Xor, "^" ; `Lsl, "<<" ; `Lsr, ">>"  ; `Asr, "a>>" ] in
+  let comparison_ops = [ `Lt, "<" ; `Gt, ">" ; `Lte, "<=" ; `Gte, ">=" ; `Eq, "==" ] in
   let binary_ops =
-    [ `Add, "+" ; `Sub, "-" ; `Mul, "*" ; `Div, "/" ; `Mod, "%" ;
-      `And, "&" ; `Or, "|" ; `Xor, "^" ; `Lsl, "<<" ; `Lsr, ">>"  ; `Asr, "a>>" ;
-      `Lt, "<" ; `Gt, ">" ; `Lte, "<=" ; `Gte, ">=" ; `Eq, "==" ] in
+    binarith_ops @ bitwise_ops @ comparison_ops in
   let deftypes = (`Int, "") :: numtypes in
   let () = (* check that all cases are handled here *)
-    List.iter (function #unary_int_op, _ -> () | _ -> assert false) unary_ops;
-    List.iter (function #binary_int_op, _ -> () | _ -> assert false) binary_ops;
-    List.iter (function #inttype, _ -> () | _ -> assert false) numtypes in
+    List.iter (function #unary_num_op, _ -> () | _ -> assert false) unary_ops;
+    List.iter (function #binary_num_op, _ -> () | _ -> assert false) binary_ops;
+    List.iter (function #numtype, _ -> () | _ -> assert false) numtypes in
   List.fold_right (fun (ty,tyname) ->
     List.fold_right (fun (op,opname) ->
       StrMap.add (opname ^ tyname) (op, ty)) unary_ops) deftypes StrMap.empty,
-  List.fold_right (fun (ty,tyname) ->
-    List.fold_right (fun (op,opname) ->
-      StrMap.add (opname ^ tyname) (op, ty)) binary_ops) deftypes StrMap.empty,
+  (List.fold_right (fun (ty,tyname) ->
+     List.fold_right (fun (op,opname) ->
+       StrMap.add (opname ^ tyname) (op, ty)) binary_ops) deftypes StrMap.empty
+   |> List.fold_right (fun (_ty,tyname) ->
+        List.fold_right (fun (_op, opname) ->
+          StrMap.remove (opname ^ tyname)) bitwise_ops) [`Float64, ".f64"]),
   List.fold_right (fun (op1, opname1) ->
     List.fold_right (fun (op2, opname2) ->
       StrMap.add ("convert" ^ opname1 ^ opname2) (op1, op2)) numtypes) numtypes StrMap.empty,
@@ -164,11 +172,11 @@ and parse_exp env (loc, sexp) = match sexp with
 
   | List [_, Atom s; e] when StrMap.mem s unary_intops_by_name ->
      let (op, ty) = StrMap.find s unary_intops_by_name in
-     Mintop1 (op, ty, parse_exp env e)
+     Mnumop1 (op, ty, parse_exp env e)
 
   | List [_, Atom s; e1; e2] when StrMap.mem s binary_intops_by_name ->
      let (op, ty) = StrMap.find s binary_intops_by_name in
-     Mintop2 (op, ty, parse_exp env e1, parse_exp env e2)
+     Mnumop2 (op, ty, parse_exp env e1, parse_exp env e2)
 
   | List [_, Atom s; e1] when StrMap.mem s conversions_by_name ->
      let (ty1, ty2) = StrMap.find s conversions_by_name in
@@ -218,7 +226,12 @@ and parse_exp env (loc, sexp) = match sexp with
   | List ((_, Atom s) :: rest) ->
      fail loc "Unknown %d-ary operation %s" (List.length rest) s
 
+  | Atom "nan" -> Mnum (`Float64 nan)
+  | Atom "infinity" -> Mnum (`Float64 infinity)
+  | Atom "neg_infinity" -> Mnum (`Float64 neg_infinity)
+
   | Atom s ->
+     let orig = s in
      let s, ext = match String.rindex s '.' with
        | i ->
           String.sub s 0 i,
@@ -227,13 +240,16 @@ and parse_exp env (loc, sexp) = match sexp with
           s, ".int" in
      begin
        try match StrMap.find ext numtypes_by_name with
-       | `Int -> Mint (`Int (int_of_string s))
-       | `Int32 -> Mint (`Int32 (Int32.of_string s))
-       | `Int64 -> Mint (`Int64 (Int64.of_string s))
-       | `Bigint -> Mint (`Bigint (Z.of_string s))
+       | `Int -> Mnum (`Int (int_of_string s))
+       | `Int32 -> Mnum (`Int32 (Int32.of_string s))
+       | `Int64 -> Mnum (`Int64 (Int64.of_string s))
+       | `Bigint -> Mnum (`Bigint (Z.of_string s))
+       | `Float64 -> Mnum (`Float64 (float_of_string s))
        with
        | Not_found ->
-          fail loc "unknown constant type: '%s'" ext
+          (try Mnum (`Float64 (float_of_string orig))
+           with Invalid_argument _ ->
+             fail loc "unknown constant type: '%s'" ext)
        | Invalid_argument _ | Failure _ ->
           fail loc "constant '%s' out of bounds for '%s'" s ext
      end

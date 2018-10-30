@@ -1,11 +1,13 @@
 type inttype = [`Int | `Int32 | `Int64 | `Bigint]
-type intconst = [`Int of int | `Int32 of Int32.t | `Int64 of Int64.t | `Bigint of Z.t]
-type unary_int_op =
+type numtype = [inttype | `Float64]
+type numconst = [`Int of int | `Int32 of Int32.t | `Int64 of Int64.t | `Bigint of Z.t | `Float64 of float]
+type unary_num_op =
   [`Neg | `Not]
-type binary_int_op =
-  [ `Add | `Sub | `Mul | `Div | `Mod
-  | `And | `Or | `Xor | `Lsl | `Lsr | `Asr
-  | `Lt | `Gt | `Lte | `Gte | `Eq ]
+type binary_arith_op = [ `Add | `Sub | `Mul | `Div | `Mod ]
+type binary_bitwise_op = [ `And | `Or | `Xor | `Lsl | `Lsr | `Asr ]
+type binary_comparison = [ `Lt | `Gt | `Lte | `Gte | `Eq ]
+type binary_num_op =
+  [ binary_arith_op | binary_bitwise_op | binary_comparison ]
 
 type vector_type =
   [`Array | `Bytevec]
@@ -30,15 +32,15 @@ type t =
 | Mlambda of var list * t
 | Mapply of t * t list
 | Mlet of binding list * t
-| Mint of intconst
+| Mnum of numconst
 | Mstring of string
 | Mglobal of Longident.t
 | Mswitch of t * (case list * t) list
 
-(* Integers *)
-| Mintop1 of unary_int_op * inttype * t
-| Mintop2 of binary_int_op * inttype * t * t
-| Mconvert of inttype * inttype * t
+(* Numbers *)
+| Mnumop1 of unary_num_op * numtype * t
+| Mnumop2 of binary_num_op * numtype * t * t
+| Mconvert of numtype * numtype * t
 
 (* Vectors *)
 | Mvecnew of vector_type * t * t

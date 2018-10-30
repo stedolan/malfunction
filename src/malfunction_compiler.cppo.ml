@@ -13,7 +13,7 @@ let rec lrmap f = function
 
 let rec reorder = function
 | Mvar _
-| Mint _
+| Mnum _
 | Mstring _
 | Mglobal _ as t -> `Pure, t
 
@@ -34,15 +34,15 @@ let rec reorder = function
 | Mswitch (e, cases) ->
    `Impure, Mswitch (snd (reorder e), List.map (fun (c, e) -> c, snd (reorder e)) cases)
 
-| Mintop1(op, ty, t) ->
+| Mnumop1(op, ty, t) ->
    reorder_sub `Pure (fun ev ->
-     Mintop1(op, ty, ev t))
+     Mnumop1(op, ty, ev t))
 
-| Mintop2(op, ty, t1, t2) ->
+| Mnumop2(op, ty, t1, t2) ->
    reorder_sub `Pure (fun ev ->
      let t1 = ev t1 in
      let t2 = ev t2 in
-     Mintop2(op, ty, t1, t2))
+     Mnumop2(op, ty, t1, t2))
 
 | Mconvert(src, dst, t) -> 
    reorder_sub `Pure (fun ev ->
@@ -420,19 +420,21 @@ let rec to_lambda env = function
         ap_func (to_lambda env fn))
   | Mlet (bindings, body) ->
      bindings_to_lambda env bindings (to_lambda env body)
-  | Mint (`Int n) ->
+  | Mnum (`Int n) ->
      Lconst (Const_base (Const_int n))
-  | Mint (`Int32 n) ->
+  | Mnum (`Int32 n) ->
      Lconst (Const_base (Const_int32 n))
-  | Mint (`Int64 n) ->
+  | Mnum (`Int64 n) ->
      Lconst (Const_base (Const_int64 n))
-  | Mint (`Bigint n) ->
+  | Mnum (`Bigint n) ->
      (match Z.to_int n with
      | n' ->
         assert (Obj.repr n = Obj.repr n');
         Lconst (Const_base (Const_int n'))
      | exception Z.Overflow ->
         builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string n))])
+  | Mnum (`Float64 f) ->
+     Lconst (Const_base (Const_float (string_of_float f)))
   | Mstring s ->
      Lconst (Const_immstring s)
   | Mglobal v ->
@@ -485,7 +487,7 @@ let rec to_lambda env = function
         (* special case comparisons with zero *)
         Lifthenelse(scr, to_lambda env enonzero, to_lambda env ezero)
      | cases -> flatten [] cases)
-  | Mintop1 (op, ty, e) ->
+  | Mnumop1 (op, ty, e) ->
      let e = to_lambda env e in
      let ones32 = Const_base (Asttypes.Const_int32 (Int32.of_int (-1))) in
      let ones64 = Const_base (Asttypes.Const_int64 (Int64.of_int (-1))) in
@@ -494,14 +496,16 @@ let rec to_lambda env = function
        | `Neg, `Int32 -> lprim (Pnegbint Pint32) [e]
        | `Neg, `Int64 -> lprim (Pnegbint Pint64) [e]
        | `Neg, `Bigint -> builtin env ["Z"; "neg"] [e]
+       | `Neg, `Float64 -> lprim Pnegfloat [e]
        | `Not, `Int -> lprim Pnot [e]
        | `Not, `Int32 ->
           lprim (Pxorbint Pint32) [e; Lconst ones32]
        | `Not, `Int64 ->
           lprim (Pxorbint Pint64) [e; Lconst ones64]
-       | `Not, `Bigint -> builtin env ["Z"; "lognot"] [e] in
+       | `Not, `Bigint -> builtin env ["Z"; "lognot"] [e] 
+       | `Not, `Float64 -> assert false in
      code
-  | Mintop2 (op, ((`Int|`Int32|`Int64) as ty), e1, e2) ->
+  | Mnumop2 (op, ((`Int|`Int32|`Int64) as ty), e1, e2) ->
      let e1 = to_lambda env e1 in
      let e2 = to_lambda env e2 in
      let prim = match ty with
@@ -534,7 +538,7 @@ let rec to_lambda env = function
           | `Lte -> Pbintcomp (t, Cle) | `Gte -> Pbintcomp (t, Cge)
           | `Eq -> Pbintcomp (t, Ceq)) in
      lprim prim [e1; e2]
-  | Mintop2 (op, `Bigint, e1, e2) ->
+  | Mnumop2 (op, `Bigint, e1, e2) ->
      let e1 = to_lambda env e1 in
      let e2 = to_lambda env e2 in
      let fn = match op with
@@ -545,13 +549,42 @@ let rec to_lambda env = function
        | `Lt -> "lt" | `Gt -> "gt"
        | `Lte -> "leq" | `Gte -> "geq" | `Eq -> "equal" in
      builtin env ["Z"; fn] [e1; e2]
+  | Mnumop2 (op, `Float64, e1, e2) ->
+     let e1 = to_lambda env e1 in
+     let e2 = to_lambda env e2 in
+     begin match op with
+     | #binary_bitwise_op -> assert false
+     | `Add -> lprim Paddfloat [e1; e2]
+     | `Sub -> lprim Psubfloat [e1; e2]
+     | `Mul -> lprim Pmulfloat [e1; e2]
+     | `Div -> lprim Pdivfloat [e1; e2]
+     | `Mod -> builtin env ["Pervasives"; "mod_float"] [e1; e2]
+     | #binary_comparison as op ->
+#if OCAML_VERSION < (4, 07, 0)
+        let cmp : Lambda.comparison = match op with
+          | `Lt -> Cle
+          | `Gt -> Cgt
+          | `Lte -> Cle
+          | `Gte -> Cge
+          | `Eq -> Ceq in
+#else
+        let cmp : Lambda.float_comparison = match op with
+          | `Lt -> CFlt
+          | `Gt -> CFgt
+          | `Lte -> CFle
+          | `Gte -> CFge
+          | `Eq -> CFeq in
+#endif
+        lprim (Pfloatcomp cmp) [e1; e2]
+     end
   | Mconvert (src, dst, e) ->
      let e = to_lambda env e in
      begin match src, dst with
        | `Bigint, `Bigint
        | `Int, `Int
        | `Int32, `Int32
-       | `Int64, `Int64 -> e
+       | `Int64, `Int64
+       | `Float64, `Float64 -> e
        | `Bigint, ((`Int|`Int32|`Int64) as dst) ->
           (* Zarith raises exceptions on overflow, but we truncate conversions. Not fast. *)
           let width = match dst with 
@@ -595,6 +628,23 @@ let rec to_lambda env = function
           lprim (Pcvtbint(Pint32, Pint64)) [e]
        | `Int64, `Int32 ->
           lprim (Pcvtbint(Pint64, Pint32)) [e]
+       | `Int, `Float64 ->
+          lprim Pfloatofint [e]
+       | `Int32, `Float64 ->
+          builtin env ["Int32"; "to_float"] [e]
+       | `Int64, `Float64 ->
+          builtin env ["Int64"; "to_float"] [e]
+       | `Bigint, `Float64 ->
+          builtin env ["Z"; "to_float"] [e]
+       (* FIXME: error handling on overflow *)
+       | `Float64, `Int ->
+          lprim Pintoffloat [e]
+       | `Float64, `Int32 ->
+          builtin env ["Int32"; "of_float"] [e]
+       | `Float64, `Int64 ->
+          builtin env ["Int64"; "of_float"] [e]
+       | `Float64, `Bigint ->
+          builtin env ["Z"; "of_float"] [e]
      end
   | Mvecnew (`Array, len, def) ->
      builtin env ["Array"; "make"] [to_lambda env len; to_lambda env def]

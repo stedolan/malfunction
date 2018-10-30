@@ -17,6 +17,7 @@ let rec reify = function
   | `Int32 -> repr (Z.to_int32 n)
   | `Int64 -> repr (Z.to_int64 n)
   | `Bigint -> repr n)
+| Float f -> Obj.repr f
 | Func _ -> raise (ReifyFailure "reify: functional value")
 | Thunk _ -> raise (ReifyFailure "reify: lazy value")
 
@@ -40,9 +41,10 @@ let check_stub = "
       (apply (global $Z $of_string) \"42\") ; ensure zarith loaded for unmarshalling
       (apply (global $Array $iter) (lambda ($x)
         (apply (global $Pervasives $print_char)
-          (if (apply (global $Pervasives $=)
-                     $x
-                     (apply (global $Marshal $from_channel) (global $Pervasives $stdin)))
+          (if (== 0
+                (apply (global $Pervasives $compare)
+                       $x
+                       (apply (global $Marshal $from_channel) (global $Pervasives $stdin))))
               89
               78))) $xs)
       (apply (global $Pervasives $print_newline) 0)))"
@@ -66,7 +68,7 @@ let try_run_tests cases =
   let checker = Malfunction_parser.read_expression
     (Lexing.from_string check_stub) in
   let testcases = cases |> List.map @@ function
-    | `Bad_test _ | `Undefined _ -> Mint (`Int 0)
+    | `Bad_test _ | `Undefined _ -> Mnum (`Int 0)
     | `Match (test, _) | `NoMatch (test, _) -> test in
   let code =
     Mmod ([`Unnamed (Mapply (checker, [Mblock (0, testcases)]))], []) in
@@ -157,7 +159,7 @@ let load_testcases_markdown filename =
   let open Omd_representation in
   let testcases = ref [] in
   let _ = Omd.of_string contents |> visit @@ function
-    | Code_block ("test", s) ->
+    | Code_block (("test" | " test"), s) ->
        let open Str in
        let (test, expect) = match split (regexp "\n=>") s with
          | [t; e] -> (parse_string t, parse_string e)
@@ -183,7 +185,7 @@ let run_file parser filename =
          | exception (Error s) -> `Undefined s
          | exception (ReifyFailure s) -> `Bad_test s
          | testRes, expectObj ->
-            if testRes = expectRes then
+            if compare testRes expectRes = 0 then
               `Match (test, expectObj)
             else
               `NoMatch (test, expectObj))

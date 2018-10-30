@@ -7,6 +7,7 @@ type value =
 | Vec of vector_type * value array
 | Func of (value -> value)
 | Int of inttype * Z.t
+| Float of float
 | Thunk of value Lazy.t
 
 val eval : t -> value

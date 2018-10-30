@@ -5,6 +5,7 @@ type value =
 | Vec of vector_type * value array
 | Func of (value -> value)
 | Int of inttype * Z.t
+| Float of float
 | Thunk of value Lazy.t
 
 exception Error of string
@@ -38,6 +39,10 @@ let as_ty ty = function
   | Int (ty', n) ->
      if ty = ty' then n else fail "integer type mismatch"
   | _ -> fail "expected integer"
+
+let as_float = function
+  | Float f -> f
+  | _ -> fail "expected float64"
 
 let rec interpret locals env : t -> value = function
   | Mvar v -> Ident.Map.find v locals
@@ -75,10 +80,11 @@ let rec interpret locals env : t -> value = function
             values.(i) <- Some (interpret locals env e));
           bind locals bindings in
      bind locals bindings
-  | Mint (`Int n) -> Int (`Int, Z.of_int n)
-  | Mint (`Int32 n) -> Int (`Int32, Z.of_int32 n)
-  | Mint (`Int64 n) -> Int (`Int64, Z.of_int64 n)
-  | Mint (`Bigint n) -> Int (`Bigint, n)
+  | Mnum (`Int n) -> Int (`Int, Z.of_int n)
+  | Mnum (`Int32 n) -> Int (`Int32, Z.of_int32 n)
+  | Mnum (`Int64 n) -> Int (`Int64, Z.of_int64 n)
+  | Mnum (`Bigint n) -> Int (`Bigint, n)
+  | Mnum (`Float64 f) -> Float f
   | Mstring s ->
      Vec (`Bytevec,
           Array.init (String.length s) (fun i -> Int (`Int, Z.of_int (Char.code (String.get s i)))))
@@ -106,10 +112,10 @@ let rec interpret locals env : t -> value = function
             find_match rest
        | [] -> fail "no case matches" in
      find_match cases
-  | Mintop1 (op, ty, e) ->
+  | Mnumop1 (op, (#inttype as ty), e) ->
      let n = as_ty ty (interpret locals env e) in
      truncate ty (match op with `Neg -> Z.neg n | `Not -> Z.lognot n)
-  | Mintop2 (op, ty, e1, e2) ->
+  | Mnumop2 (op, (#inttype as ty), e1, e2) ->
      let e1 = interpret locals env e1 in
      let e2 = interpret locals env e2 in
      begin match op with
@@ -148,8 +154,41 @@ let rec interpret locals env : t -> value = function
           | `Eq -> cmp = 0 in
         Int (`Int, if res then Z.one else Z.zero)
      end
-  | Mconvert (src, dst, e) ->
+  | Mnumop1 (`Neg, `Float64, e) ->
+     Float (-. (as_float (interpret locals env e)))
+  | Mnumop1 (`Not, `Float64, _)
+  | Mnumop2 (#binary_bitwise_op, `Float64, _, _) ->
+     failwith "invalid bitwise float operation"
+  | Mnumop2 ((#binary_arith_op | #binary_comparison as op),
+             `Float64, e1, e2) ->
+     let e1 = as_float (interpret locals env e1) in
+     let e2 = as_float (interpret locals env e2) in
+     begin match op with
+     | #binary_arith_op as op ->
+        Float (match op with
+          | `Add -> e1 +. e2
+          | `Sub -> e1 -. e2
+          | `Mul -> e1 *. e2
+          | `Div -> e1 /. e2
+          | `Mod -> mod_float e1 e2)
+     | #binary_comparison as op ->
+        let res = match op with
+          | `Lt -> e1 < e2
+          | `Gt -> e1 > e2
+          | `Lte -> e1 <= e2
+          | `Gte -> e1 <= e2
+          | `Eq -> e1 = e2 in
+        Int (`Int, if res then Z.one else Z.zero)
+     end
+  | Mconvert ((#inttype as src), (#inttype as dst), e) ->
      truncate dst (as_ty src (interpret locals env e))
+  | Mconvert ((#inttype as src), `Float64, e) ->
+     Float (Z.to_float (as_ty src (interpret locals env e)))
+  | Mconvert (`Float64, (#inttype as dst), e) ->
+     (* FIMXE: ? *)
+     truncate dst (Z.of_float (as_float (interpret locals env e)))
+  | Mconvert (`Float64, `Float64, e) ->
+     Float (as_float (interpret locals env e))
   | Mvecnew (ty, len, def) ->
      (match ty, interpret locals env len, interpret locals env def with
      | `Array, Int (`Int, len), v ->
@@ -224,3 +263,9 @@ let rec render_value = let open Malfunction_sexp in function
      | `Int64 -> ".i64"
      | `Bigint -> ".ibig" in
    loc, Atom (Z.to_string n ^ ty)
+| Float f ->
+   let s = match classify_float f with
+     | FP_nan -> "nan"
+     | FP_infinite -> if f < 0. then "neg_infinity" else "infinity"
+     | _ -> string_of_float f in
+   loc, Atom s

@@ -70,25 +70,27 @@ the `export` sexp, which must be in the same order as they are listed
 in the corresponding `.mli` file.
 
 
-## Integers and arithmetic
+## Numbers and arithmetic
 
-There are several integer types, and associated constant syntax:
+There are several numeric types, and associated constant syntax:
   - int, e.g. `42`
   - int32, e.g. `42.i32`
   - int64, e.g. `42.i64`
   - bigint, e.g. `42.ibig`
+  - float, e.g. `42.0`
 
 `int32` and `int64` use 32-bit and 64-bit two's complement arithmetic,
 with wrap on overflow. `int` uses either 31- or 63- bit two's
 complement arithmetic (depending on system word size, and also
-wrapping on overflow), and is generally fastest. `bigint` has arbitrary precision.
+wrapping on overflow), and is generally fastest. `bigint` has
+arbitrary precision. `float` uses IEEE754 double-precision (64-bit)
+arithmetic.
 
-
-Various integer operations are defined:
+Various numeric operations are defined:
 
   - *Arithmetic operations*: `+`, `-`, `*`, `/`, `%` (modulo), `neg` (unary negation)
   - *Bitwise operations*: `&`, `|`, `^`, `<<`, `>>` (zero-shifting), `a>>` (sign extending)
-  - *Integer comparisons*: `<`, `>`, `<=`, `>=`, `==`
+  - *Numeric comparisons*: `<`, `>`, `<=`, `>=`, `==`
 
 All of these operations take one or two `int`s and return an `int`:
 
@@ -102,10 +104,11 @@ All of these operations take one or two `int`s and return an `int`:
 => 32
 ```
 
-These operations come in `int32`, `int64` and `bigint` varieties,
-which may be used by suffixing `.32`, `.64` or `.big` to the operation
-name. The suffixed operations all take and return values of the
-specified integer type, except:
+These operations come in `int32`, `int64`, `bigint` and `float`
+varieties, which may be used by suffixing `.i32`, `.i64`, `.big` or `.f64`
+to the operation name. The bitwise operations are not available for
+`float`s. The suffixed operations all take and return values of the
+specified numeric type, except:
 
   - the shift operators (`<<`, `>>`, `a>>`) whose second argument (shift count) is always `int`
   - the comparison operators, whose result is always `int` (in fact, always `0` or `1`)
@@ -122,14 +125,37 @@ For example,
 => 1.i32
 ```
 
+```test
+(+.f64 0.1 0.2)
+=> 0.30000000000000004
+```
+
+As well as ordinary finite values, floats support infinite and NaN
+values, available as the literals `infinity`, `neg_infinity` and
+`nan`. Note that `nan` is unordered with respect to other floats, so
+comparisons with it always return false.
+
 Integer types are not automatically coerced, and behaviour is
 undefined if the wrong types are passed to an operation. Explicit
-conversions are done with `convert.FROM.TO`, which sign-extend from
-smaller to larger types and truncate from larger to smaller:
+conversions are done with `convert.FROM.TO`. When converting between
+integer types, conversions from smaller to larger types sign-extend
+and conversions from larger to smaller truncate. Conversions from an
+integer type to float round to the nearest float, which may not be
+exactly equal to the specified integer.
+
+Conversions from float to integer type truncate the fractional
+part. Currently, their behaviour is undefined if the input is outside
+the representable range of the target type, although this might change
+in the future.
 
 ```test
 (convert.i32.i64 42.i32)
 => 42.i64
+```
+
+```test
+(convert.f64.int 3.9)
+=> 3
 ```
 
 ## Functions
