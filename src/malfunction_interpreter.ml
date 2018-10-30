@@ -9,7 +9,7 @@ type value =
 exception Error of string
 
 let fail fmt =
-  let k ppf =
+  let k _ppf =
     raise (Error (Format.flush_str_formatter ())) in
   Format.kfprintf k Format.str_formatter ("@[" ^^ fmt ^^ "@]")
 
@@ -81,7 +81,7 @@ let rec interpret locals env : t -> value = function
   | Mstring s ->
      Vec (`Bytevec,
           Array.init (String.length s) (fun i -> Int (`Int, Z.of_int (Char.code (String.get s i)))))
-  | Mglobal v -> fail "globals unsupported"
+  | Mglobal _v -> fail "globals unsupported"
      (*
      let (path, _descr) = Env.lookup_value v env in
      let path = Env.normalize_path None env path in
@@ -175,7 +175,7 @@ let rec interpret locals env : t -> value = function
           (match ty, v with
           |  `Array, _ -> ()
           | `Bytevec, Int (`Int, i) when 0 <= Z.to_int i && Z.to_int i < 256 -> ()
-          | `Bytevec, v -> fail "not a byte");
+          | `Bytevec, _v -> fail "not a byte");
           vals.(i) <- v; Int (`Int, Z.of_int 0)
         end else
           fail "index out of bounds: %d" i
@@ -206,7 +206,7 @@ let rec render_value = let open Malfunction_sexp in function
 | Vec (ty, vals) ->
   loc, List ((loc, Atom (match ty with `Array -> "vector" | `Bytevec -> "vector.byte"))::
               List.map render_value (Array.to_list vals))
-| Func f ->
+| Func _ ->
   loc, Atom "<function>"
 | Int (ty, n) ->
    let ty = match ty with

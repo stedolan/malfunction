@@ -16,5 +16,4 @@
  (public_name malfunction)
  (libraries compiler-libs.optcomp str zarith findlib dynlink unix)
  (wrapped false)
- (flags (:standard -w @8 -warn-error -a+31))
  (modules (:standard \ malfunction_main)))

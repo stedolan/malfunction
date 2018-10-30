@@ -7,19 +7,19 @@ type moduleexp =
 (* Compiling from sexps *)
 
 let fail loc fmt =
-  let k ppf =
+  let k _ppf =
     raise (SyntaxError (loc, Format.flush_str_formatter ())) in
   Format.kfprintf k Format.str_formatter ("@[" ^^ fmt ^^ "@]")
 
 module StrMap = Map.Make (struct type t = string let compare = compare end)
 
-let bind_local loc locals s ident =
+let bind_local _loc locals s ident =
   StrMap.add s ident locals
 
 let parse_arglist = function
   | loc, List args ->
      let idents = args |> List.map (function
-       | loc, Var s ->
+       | _loc, Var s ->
           s, Ident.create s
        | loc, _ -> fail loc "Expected a list of variables") in
      let env = List.fold_left (fun env (s, ident) ->
@@ -96,13 +96,13 @@ let rec parse_bindings loc env acc = function
      let recs = recs |> List.map (function
        | _, List [_, Var s; _, List ((_, Atom "lambda") :: _) as e] ->
           (s, Ident.create s, e)
-       | _, List [_, Var s; _] ->
+       | _, List [_, Var _; _] ->
           fail loc "all members of a recursive binding must be functions"
        | loc, _ ->
           fail loc "expected recursive bindings") in
-     let env' = List.fold_left (fun env (s, id, e) ->
+     let env' = List.fold_left (fun env (s, id, _) ->
        bind_local loc env s id) env recs in
-     let recs = recs |> List.map (fun (s, id, e) ->
+     let recs = recs |> List.map (fun (_, id, e) ->
        (id, parse_exp env' e)) in
      parse_bindings loc env' (`Recursive recs :: acc) bindings
   | _ -> fail loc "no bindings?"
@@ -119,14 +119,14 @@ and parse_exp env (loc, sexp) = match sexp with
      let env = StrMap.fold StrMap.add newenv env in
      Mlambda (params, parse_exp env exp)
 
-  | List ((loc, Atom "apply") :: func :: args) ->
+  | List ((_loc, Atom "apply") :: func :: args) ->
      Mapply (parse_exp env func, List.map (parse_exp env) args)
 
   | List ((loc, Atom "let") :: bindings) ->
      let (bindings, env, e) = parse_bindings loc env [] bindings in
      Mlet (bindings, parse_exp env e)
 
-  | List ((loc, Atom "seq") :: ((_ :: _) as exps)) ->
+  | List ((_loc, Atom "seq") :: ((_ :: _) as exps)) ->
      let rec to_let acc = function
        | [] -> assert false
        | [e] -> Mlet (List.rev acc, parse_exp env e)
