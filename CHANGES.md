@@ -1,6 +1,7 @@
 ????
 ---------------------
 
+Support for OCaml 4.06 and 4.07
 Dune support (replacing jbuilder)
 
 

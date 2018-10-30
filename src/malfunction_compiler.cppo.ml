@@ -113,11 +113,25 @@ let llet id exp body =
   Llet (Strict, Pgenval, id, exp, body)
 #endif
 
+let lswitch (scr : lambda) (swi : lambda_switch) =
+#if OCAML_VERSION >= (4, 06, 0)
+  Lswitch(scr, swi, Location.none)
+#else
+  Lswitch(scr, swi)
+#endif
+
 let pmakeblock tag mut =
 #if OCAML_VERSION < (4, 04, 0)
   Pmakeblock (tag, mut)
 #else
   Pmakeblock (tag, mut, None)
+#endif
+
+let transl_value_path =
+#if OCAML_VERSION >= (4, 06, 0)
+  Lambda.transl_value_path
+#else
+  Lambda.transl_path
 #endif
 
 module IntSwitch = struct
@@ -213,7 +227,12 @@ module IntSwitch = struct
     type primitive = Lambda.primitive
 
     let eqint = Pintcomp Ceq
-    let neint = Pintcomp Cneq
+    let neint =
+#if OCAML_VERSION >= (4, 07, 0)
+       Pintcomp Cne
+#else
+       Pintcomp Cneq
+#endif
     let leint = Pintcomp Cle
     let ltint = Pintcomp Clt
     let geint = Pintcomp Cge
@@ -237,15 +256,19 @@ module IntSwitch = struct
     let make_isout h arg = lprim Pisout [h ; arg]
     let make_isin h arg = lprim Pnot [make_isout h arg]
     let make_if cond ifso ifnot = Lifthenelse (cond, ifso, ifnot)
-    let make_switch arg cases acts =
+    let make_switch
+#if OCAML_VERSION >= (4, 06, 0)
+      _loc
+#endif
+      arg cases acts =
       let l = ref [] in
       for i = Array.length cases-1 downto 0 do
         l := (i,acts.(cases.(i))) ::  !l
       done ;
-      Lswitch(arg,
-              {sw_numconsts = Array.length cases ; sw_consts = !l ;
-               sw_numblocks = 0 ; sw_blocks =  []  ;
-               sw_failaction = None})
+      lswitch arg
+        {sw_numconsts = Array.length cases ; sw_consts = !l ;
+         sw_numblocks = 0 ; sw_blocks =  []  ;
+         sw_failaction = None}
     let make_catch d =
       match d with
       | Lstaticraise (i, []) -> i, (fun e -> e)
@@ -278,7 +301,7 @@ module IntSwitch = struct
          count_occurrences rest in
     count_occurrences cases;
     let open Switch in
-    let store : Lambda.lambda t_store =
+    let store (*: Lambda.lambda t_store*) =
       { act_get = (fun () ->
           Array.copy actions);
         act_get_shared = (fun () ->
@@ -288,18 +311,29 @@ module IntSwitch = struct
         act_store_shared = (fun _ -> failwith "store_shared unimplemented") } in
     let cases = Array.of_list cases in
     let (low, _, _) = cases.(0) and (_, high, _) = cases.(Array.length cases - 1) in
-    Switcher.zyva (low, high) scr cases store
+    Switcher.zyva
+#if OCAML_VERSION >= (4, 06, 0)
+      Location.none
+#endif
+      (low, high) scr cases store
 end
 
 let lookup env v =
   let open Types in
   let open Primitive in
-  let (path, descr) = try
+  let (path, descr) =
+    try
       Env.lookup_value (* ~loc:(parse_loc loc) *) v env
-    with
-      Not_found -> failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
+    with Not_found ->
+      let rec try_stdlib = let open Longident in function
+        | Lident s -> Ldot (Lident "Stdlib", s)
+        | Ldot (id, s) -> Ldot (try_stdlib id, s)
+        | Lapply _ as l -> l in
+      try Env.lookup_value (try_stdlib v) env
+      with Not_found ->
+        failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
   match descr.val_kind with
-  | Val_reg -> `Val (Lambda.transl_path (* ~loc:(parse_loc loc) *) env path)
+  | Val_reg -> `Val (transl_value_path (* ~loc:(parse_loc loc) *) env path)
   | Val_prim(p) ->
      let p = match p.prim_name with
        | "%equal" ->
@@ -418,11 +452,11 @@ let rec to_lambda env = function
                  let numtags = match def with
                    | Some _ -> (max_tag :> int)
                    | None -> 1 + List.fold_left (fun s (`Tag i, _) -> max s (i :> int)) (-1) tags in
-                 Some (Lswitch (scr, {
+                 Some (lswitch scr {
                    sw_numconsts = 0; sw_consts = []; sw_numblocks = numtags;
                    sw_blocks = List.map (fun (`Tag i, e) -> i, e) tags;
                    sw_failaction = match def with None -> None | Some (`Deftag,e) -> Some e
-                 })) in
+                 }) in
             let intswitch = match intcases with
               | [] -> None
               | [_,e] -> Some e
@@ -693,12 +727,18 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
   } in
   setup_options options;
   try
+#if OCAML_VERSION < (4, 06, 0)
     let source_provenance = Timings.File filename in
+#endif
     let modulename = Compenv.module_of_filename ppf filename prefixname in
     let module_ident = Ident.create_persistent modulename in
     let cmi = modulename ^ ".cmi" in
     Env.set_unit_name modulename;
-    Compilenv.reset ~source_provenance ?packname:!Clflags.for_package modulename;
+    Compilenv.reset
+#if OCAML_VERSION < (4, 06, 0)
+      ~source_provenance
+#endif
+      ?packname:!Clflags.for_package modulename;
     ignore (match Misc.find_in_path_uncap !Config.load_path cmi with
         | file -> Env.read_signature modulename file
         | exception Not_found ->
@@ -729,7 +769,9 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
     code
     |> (fun lam ->
       Middle_end.middle_end ppf
+#if OCAML_VERSION < (4, 06, 0)
         ~source_provenance
+#endif
         ~prefixname
         ~size
         ~filename
@@ -737,7 +779,9 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
         ~backend
         ~module_initializer:lam)
     |> Asmgen.compile_implementation_flambda
+#if OCAML_VERSION < (4, 06, 0)
         ~source_provenance
+#endif
         prefixname
         ~backend
 #if OCAML_VERSION >= (4, 04, 0)
