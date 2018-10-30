@@ -3,7 +3,7 @@
 
 Support for OCaml 4.06 and 4.07
 Dune support (replacing jbuilder)
-
+Lazy evaluation (lazy E and force E) 
 
 v0.2.1 (3rd October 2017)
 ---------------------

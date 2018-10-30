@@ -78,6 +78,12 @@ let rec reorder = function
    reorder_sub `Impure (fun ev ->
      Mfield (n, ev t))
 
+| Mlazy _ as t -> `Pure, t (* FIXME is this right? *)
+
+| Mforce e ->
+   reorder_sub `Impure (fun ev ->
+     Mforce (ev e))
+
 and reorder_bindings bindings =
   bindings
   |> lrmap (function
@@ -112,6 +118,25 @@ let llet id exp body =
 #else
   Llet (Strict, Pgenval, id, exp, body)
 #endif
+
+let lfunction params body =
+  Lfunction {
+     kind = Curried;
+     params;
+     body;
+     attr = {
+       inline = Default_inline;
+       specialise = Default_specialise;
+       is_a_functor = false
+#if OCAML_VERSION >= (4, 05, 0)
+       ; stub = false
+#endif
+     };
+#if OCAML_VERSION >= (4, 04, 0)
+     loc = Location.none
+#endif
+   }
+
 
 let lswitch (scr : lambda) (swi : lambda_switch) =
 #if OCAML_VERSION >= (4, 06, 0)
@@ -371,22 +396,7 @@ let rec to_lambda env = function
   | Mvar v ->
      Lvar v
   | Mlambda (params, e) ->
-     Lfunction {
-       kind = Curried;
-       params;
-       body = to_lambda env e;
-       attr = {
-         inline = Default_inline;
-         specialise = Default_specialise;
-         is_a_functor = false
-#if OCAML_VERSION >= (4, 05, 0)
-         ; stub = false
-#endif
-       };
-#if OCAML_VERSION >= (4, 04, 0)
-       loc = Location.none;
-#endif
-     }
+     lfunction params (to_lambda env e)
   | Mapply (fn, args) ->
      let ap_func fn =
        Lapply {
@@ -621,6 +631,11 @@ let rec to_lambda env = function
      lprim (pmakeblock tag Immutable) (List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
       lprim (Pfield(idx)) [to_lambda env e]
+  | Mlazy e ->
+     let fn = lfunction [Ident.create "param"] (to_lambda env e) in
+     lprim (pmakeblock Config.lazy_tag Mutable) [fn]
+  | Mforce e ->
+     Matching.inline_lazy_force (to_lambda env e) Location.none
 
 and bindings_to_lambda env bindings body =
   List.fold_right (fun b rest -> match b with

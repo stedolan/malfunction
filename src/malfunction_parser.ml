@@ -198,6 +198,12 @@ and parse_exp env (loc, sexp) = match sexp with
   | String s ->
      Mstring s
 
+  | List [_, Atom "lazy"; e] ->
+     Mlazy (parse_exp env e)
+
+  | List [_, Atom "force"; e] ->
+     Mforce (parse_exp env e)
+
   | List ((_, Atom "global") :: path) ->
      Mglobal (path
        |> List.map (function

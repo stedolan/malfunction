@@ -306,6 +306,35 @@ vectors, or vice versa.
 
 String literals (`"hello"`) return byte vectors.
 
+## Lazy evaluation
+
+A *lazily-evaluated* expression is one that's not computed until it's
+needed. The expression `(lazy E)` constructs a lazy value that wraps
+the expression `E` but does not evaluate it immediately. When the lazy
+value is examined using `(force $lazyval)`, `E` will be computed.
+
+`E` is evaluated at most once for a given `(lazy E)`. If the resulting
+value is `force`d twice, then the value computed by `E` is cached.
+
+If evaluating `E` produces side effects, these occur at the time that
+`E` is first forced. For instance:
+
+```test
+(let
+  ($box (makevec 1 42))
+  ($thunk
+    (lazy (let
+      ($val (load $box 0))
+      (_ (store $box 0 (+ $val 1)))
+      $val)))
+  (block (tag 0)
+    (load $box 0)
+    (force $thunk)
+    (load $box 0)
+    (force $thunk)))
+=> (block (tag 0) 42 42 43 42)
+```
+
 ## Accessing OCaml values
 
 OCaml values can be accessed from Malfunction programs by specifying a

@@ -5,6 +5,7 @@ type value =
 | Vec of vector_type * value array
 | Func of (value -> value)
 | Int of inttype * Z.t
+| Thunk of value Lazy.t
 
 exception Error of string
 
@@ -190,6 +191,12 @@ let rec interpret locals env : t -> value = function
      (match interpret locals env b with
      | Block (_, vals) -> vals.(idx)
      | _ -> fail "not a block")
+  | Mlazy e ->
+    Thunk (lazy (interpret locals env e))
+  | Mforce e ->
+     (match interpret locals env e with
+      | Thunk (lazy v) -> v
+      | _ -> fail "not a lazy value")
 
 let eval exp =
   interpret Ident.Map.empty () exp
@@ -208,6 +215,8 @@ let rec render_value = let open Malfunction_sexp in function
               List.map render_value (Array.to_list vals))
 | Func _ ->
   loc, Atom "<function>"
+| Thunk _ ->
+  loc, Atom "<lazy value>"
 | Int (ty, n) ->
    let ty = match ty with
      | `Int -> ""

@@ -46,6 +46,10 @@ type t =
 | Mvecset of vector_type * t * t * t
 | Mveclen of vector_type * t
 
+(* Lazy *)
+| Mlazy of t
+| Mforce of t
+
 (* Blocks *)
 | Mblock of int * t list
 | Mfield of int * t

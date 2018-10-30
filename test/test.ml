@@ -18,6 +18,7 @@ let rec reify = function
   | `Int64 -> repr (Z.to_int64 n)
   | `Bigint -> repr n)
 | Func _ -> raise (ReifyFailure "reify: functional value")
+| Thunk _ -> raise (ReifyFailure "reify: lazy value")
 
 and reify_block n xs =
   let o = Obj.new_block n (Array.length xs) in
