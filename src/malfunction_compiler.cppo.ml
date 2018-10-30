@@ -13,10 +13,12 @@ let rec lrmap f = function
 
 let rec reorder = function
 | Mvar _
-| Mlambda _
 | Mint _
 | Mstring _
 | Mglobal _ as t -> `Pure, t
+
+| Mlambda (params, body) ->
+  `Pure, Mlambda (params, snd (reorder body))
 
 | Mapply (f, xs) ->
    reorder_sub `Impure (fun ev ->
@@ -78,7 +80,8 @@ let rec reorder = function
    reorder_sub `Impure (fun ev ->
      Mfield (n, ev t))
 
-| Mlazy _ as t -> `Pure, t (* FIXME is this right? *)
+| Mlazy e ->
+  `Pure, Mlazy (snd (reorder e))
 
 | Mforce e ->
    reorder_sub `Impure (fun ev ->
