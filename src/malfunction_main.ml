@@ -43,7 +43,7 @@ let run mode options impl output =
        let res = Malfunction_compiler.link_executable output tmpfiles in
        Malfunction_compiler.delete_temps tmpfiles;
        res)
-  | `Eval, Some file ->
+  | `Eval, Some _file ->
      0
   | `Eval, None ->
      repl (); 0
@@ -55,7 +55,7 @@ let run mode options impl output =
   | _ -> usage ()
 
 
-let rec parse_args args =
+let parse_args args =
   let impl = ref None in
   let output = ref None in
   let opts = ref [] in

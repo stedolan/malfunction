@@ -175,17 +175,20 @@ let run_file parser filename =
   | None -> Format.printf "parse error\n%!"; `SomeFailed
   | Some cases ->
      let results = cases
-     |> List.map (fun (ty, loc, test, expect) ->
+     |> List.map (fun (_ty, _loc, test, expect) ->
        match eval expect with
        | exception (Error s) -> `Bad_test s
        | expectRes -> match eval test, reify expectRes with
          | exception (Error s) -> `Undefined s
          | exception (ReifyFailure s) -> `Bad_test s
-         | testRes, expectObj when testRes <> expectRes -> `NoMatch (test, expectObj)
-         | testRes, expectObj -> `Match (test, expectObj))
+         | testRes, expectObj ->
+            if testRes = expectRes then
+              `Match (test, expectObj)
+            else
+              `NoMatch (test, expectObj))
      |> run_tests in
      let passed = ref 0 in
-     let describe (ty, ({Lexing.pos_lnum = line}, _), _, _) result =
+     let describe (ty, ({Lexing.pos_lnum = line; _}, _), _, _) result =
        let say fmt =
          Format.printf "\n%s:%d: " filename line;
          let endline ppf =

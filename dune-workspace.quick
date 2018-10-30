@@ -1,0 +1,2 @@
+(lang dune 1.0)
+(context (opam (switch 4.05.0+flambda) (merlin)))

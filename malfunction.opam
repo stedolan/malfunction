@@ -13,7 +13,7 @@ available: [ ocaml-version >= "4.03" ]
 depends: [
   "ocamlfind"
   "base-flambda"
-  "jbuilder" {build}
+  "dune" {build}
   "cppo" {build}
   "omd" {test}
   "zarith"
