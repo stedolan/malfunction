@@ -17,6 +17,8 @@ let bind_local _loc locals s ident =
   StrMap.add s ident locals
 
 let parse_arglist = function
+  | loc, List [] ->
+     fail loc "a nonempty argument list is required"
   | loc, List args ->
      let idents = args |> List.map (function
        | _loc, Var s ->
@@ -128,6 +130,7 @@ and parse_exp env (loc, sexp) = match sexp with
      Mlambda (params, parse_exp env exp)
 
   | List ((_loc, Atom "apply") :: func :: args) ->
+     if args = [] then fail loc "Expected a nonempty parameter list";
      Mapply (parse_exp env func, List.map (parse_exp env) args)
 
   | List ((loc, Atom "let") :: bindings) ->
