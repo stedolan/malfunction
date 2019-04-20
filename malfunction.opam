@@ -12,7 +12,6 @@ build-test:
 available: [ ocaml-version >= "4.03" ]
 depends: [
   "ocamlfind"
-  "base-flambda"
   "dune" {build}
   "cppo" {build}
   "omd" {test}

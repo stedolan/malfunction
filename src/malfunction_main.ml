@@ -33,7 +33,7 @@ let run mode options impl output =
   Findlib.init ();
   match mode, impl with
   | `Cmx, Some file ->
-     with_error_reporting Format.std_formatter 1 (fun () -> let _ = Malfunction_compiler.compile_cmx file in 0)
+     with_error_reporting Format.std_formatter 1 (fun () -> let _ = Malfunction_compiler.compile_cmx ~options file in 0)
   | `Compile, Some file ->
      with_error_reporting Format.std_formatter 1 (fun () ->
        let tmpfiles = Malfunction_compiler.compile_cmx ~options file in
@@ -72,6 +72,7 @@ let parse_args args =
   | "fmt" :: rest -> parse_opts `Fmt rest
   | _ -> usage ()
 
+(*
 let () =
   if not Config.flambda then begin
     Format.fprintf Format.err_formatter 
@@ -79,5 +80,6 @@ let () =
        Try \"opam switch 4.03.0+flambda\"\n";
     exit 1
   end
+ *)
 
 let _ = exit (parse_args (List.tl (Array.to_list Sys.argv)))

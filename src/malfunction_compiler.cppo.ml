@@ -717,7 +717,7 @@ let setup_options options =
     default_simplify_rounds := 2;
     use_inlining_arguments_set o2_arguments;
     use_inlining_arguments_set ~round:0 o1_arguments);
-
+  (* FIXME: should we use classic_arguments for non-flambda builds? *)
 
   (* Hack: disable the "no cmx" warning for zarith *)
   Warnings.parse_options false "-58";
@@ -735,17 +735,90 @@ let setup_options options =
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   Compmisc.init_path true
 
+module Subst : sig
+  type t
+  val empty : t
+  val add : Ident.t -> Lambda.lambda -> t -> t
+  val apply : t -> Lambda.lambda -> Lambda.lambda
+end = struct
+#if OCAML_VERSION < (4,07,0)
+  type t = Lambda.lambda Ident.tbl
+  let empty = Ident.empty
+  let add = Ident.add
+  let apply = Lambda.subst_lambda
+#else
+  type t = Lambda.lambda Ident.Map.t
+  let empty = Ident.Map.empty
+  let add = Ident.Map.add
+  let apply = Lambda.subst
+#endif
+end
 
-let module_to_lambda ?options (Mmod (bindings, exports)) =
+let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports)) =
   setup_options (match options with Some o -> o | None -> []);
   let print_if flag printer arg =
     if !flag then Format.printf "%a@." printer arg;
     arg in
 
   let env = Compmisc.initial_env () in
-  let code =
-    bindings_to_lambda env (reorder_bindings bindings)
-      (lprim (pmakeblock 0 Immutable) (List.map (fun e -> to_lambda env (snd (reorder e))) exports)) in
+  let module_size, code =
+    let bindings = reorder_bindings bindings in
+    let exports = List.map (fun e -> snd (reorder e)) exports in
+    if Config.flambda then
+      List.length exports,
+      bindings_to_lambda env bindings
+        (lprim (pmakeblock 0 Immutable) (List.map (to_lambda env) exports))
+    else begin
+      let loc = Location.none (* FIXME *) in
+      let num_exports = List.length exports in
+      (* Compile all of the bindings, store at positions num_exports + i,
+         then compile the exports. See Translmod.transl_store_gen. *)
+      let module_length = ref (-1) in
+      let mod_store pos e =
+        let init =
+#if OCAML_VERSION < (4, 05, 0)
+          Initialization
+#else
+          Root_initialization
+#endif
+        in
+        Lprim (Psetfield (pos, Pointer, init),
+               [Lprim (Pgetglobal module_id, [], loc); e], loc) in
+      let mod_load pos =
+        Lprim (Pfield pos,
+               [Lprim (Pgetglobal module_id, [], loc)], loc) in
+      let transl_exports subst =
+        let exps = List.mapi (fun i e -> mod_store i (Subst.apply subst (to_lambda env e))) exports in
+        List.fold_right (fun x xs -> Lsequence (x, xs)) exps (Lconst Lambda.const_unit) in
+      let rec transl_toplevel_bindings pos subst = function
+        | `Unnamed e :: rest ->
+           Lsequence (Subst.apply subst (to_lambda env e),
+                      transl_toplevel_bindings pos subst rest)
+        | `Named (n, e) :: rest ->
+           let lam =
+             llet n (Subst.apply subst (to_lambda env e)) (mod_store pos (Lvar n)) in
+           Lsequence (lam,
+                      transl_toplevel_bindings
+                        (pos + 1)
+                        (Subst.add n (mod_load pos) subst)
+                        rest)
+        | `Recursive bs :: rest ->
+           let ids = List.map fst bs in
+           let stores = ids |> List.mapi (fun i n -> mod_store (pos + i) (Lvar n)) in
+           let stores = List.fold_right (fun x xs -> Lsequence (x, xs))
+                          stores (Lconst Lambda.const_unit) in
+           let lam =
+             Lletrec (bs |> List.map (fun (n, e) ->
+                                (n, Subst.apply subst (to_lambda env e))),
+                      stores) in
+           let id_load = ids |> List.mapi (fun i n -> (n, mod_load (pos + i))) in
+           let subst = List.fold_left (fun subst (n, l) -> Subst.add n l subst) subst id_load in
+           Lsequence (lam, transl_toplevel_bindings (pos + List.length ids) subst rest)
+
+        | [] -> module_length := pos; transl_exports subst in
+      let r = transl_toplevel_bindings num_exports Subst.empty bindings in
+      !module_length, r
+    end in
 
   let lambda = code
   |> print_if Clflags.dump_rawlambda Printlambda.lambda
@@ -756,7 +829,7 @@ let module_to_lambda ?options (Mmod (bindings, exports)) =
 #endif
   |> print_if Clflags.dump_lambda Printlambda.lambda in
 
-  (List.length exports, lambda)
+  (module_size, lambda)
 
 
 
@@ -786,7 +859,7 @@ let delete_temps { objfile; cmxfile; cmifile } =
 type options = [`Verbose | `Shared] list
 
 
-let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
+let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (size, code) =
   let ppf = Format.std_formatter in
   let outfiles = ref {
     cmxfile = prefixname ^ ".cmx";
@@ -798,17 +871,15 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
 #if OCAML_VERSION < (4, 06, 0)
     let source_provenance = Timings.File filename in
 #endif
-    let modulename = Compenv.module_of_filename ppf filename prefixname in
-    let module_ident = Ident.create_persistent modulename in
-    let cmi = modulename ^ ".cmi" in
-    Env.set_unit_name modulename;
+    let cmi = module_name ^ ".cmi" in
+    Env.set_unit_name module_name;
     Compilenv.reset
 #if OCAML_VERSION < (4, 06, 0)
       ~source_provenance
 #endif
-      ?packname:!Clflags.for_package modulename;
+      ?packname:!Clflags.for_package module_name;
     ignore (match Misc.find_in_path_uncap !Config.load_path cmi with
-        | file -> Env.read_signature modulename file
+        | file -> Env.read_signature module_name file
         | exception Not_found ->
            let chop_ext =
              #if OCAML_VERSION < (4, 04, 0)
@@ -826,37 +897,53 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
              (* hackily generate an empty cmi file *)
              let cmifile = String.uncapitalize_ascii cmi in
              outfiles := { !outfiles with cmifile = Some cmifile };
-             let mlifile = String.uncapitalize_ascii (modulename ^ ".mli") in
+             let mlifile = String.uncapitalize_ascii (module_name ^ ".mli") in
              let ch = open_out mlifile in
              output_string ch "(* autogenerated mli for malfunction *)\n";
              close_out ch;
              ignore (Sys.command ("ocamlc -c " ^ mlifile));
              Misc.remove_file mlifile;
              if not (Sys.file_exists cmifile) then failwith "Failed to generate empty cmi file";
-             Env.read_signature modulename cmifile);
-    code
-    |> (fun lam ->
-      Middle_end.middle_end ppf
+             Env.read_signature module_name cmifile);
+    (* FIXME: may need to add modules referenced only by "external" to this.
+       See Translmod.primitive_declarations and its use in Asmgen. *)
+    (* FIXME: Translprim.get_used_primitives (see translmod.ml)? *)
+    (* FIXME: Translmod.required_globals? Env.reset_required_globals? Should this be in to_lambda? *)
+    let required_globals = Ident.Set.of_list (Env.get_required_globals ()) in
+    if Config.flambda then begin
+      code
+      |> (fun lam ->
+        Middle_end.middle_end ppf
 #if OCAML_VERSION < (4, 06, 0)
-        ~source_provenance
+          ~source_provenance
 #endif
-        ~prefixname
-        ~size
-        ~filename
-        ~module_ident
-        ~backend
-        ~module_initializer:lam)
-    |> Asmgen.compile_implementation_flambda
+          ~prefixname
+          ~size
+          ~filename
+          ~module_ident:module_id
+          ~backend
+          ~module_initializer:lam)
+      |> Asmgen.compile_implementation_flambda
 #if OCAML_VERSION < (4, 06, 0)
-        ~source_provenance
+          ~source_provenance
 #endif
-        prefixname
-        ~backend
+          prefixname
+          ~backend
 #if OCAML_VERSION >= (4, 04, 0)
-        (* FIXME: may need to add modules referenced only by "external" to this *)
-        ~required_globals:(Ident.Set.of_list (Env.get_required_globals ()))
+          ~required_globals
 #endif
-        ppf;
+          ppf
+    end else begin
+      (* FIXME: main_module_block_size is wrong *)
+      code
+      |> (fun code -> Lambda.{ module_ident = module_id; required_globals;
+                               code; main_module_block_size = size })
+      |> Asmgen.compile_implementation_clambda
+#if OCAML_VERSION < (4, 06, 0)
+           ~source_provenance
+#endif
+           prefixname ppf;
+    end;
     Compilenv.save_unit_info !outfiles.cmxfile;
     Warnings.check_fatal ();
     !outfiles
@@ -868,11 +955,13 @@ let lambda_to_cmx ?(options=[]) filename prefixname (size, code) =
 let compile_cmx ?(options=[]) filename =
   let prefixname = Compenv.output_prefix filename in
   let lexbuf = Lexing.from_channel (open_in filename) in
+  let module_name = Compenv.module_of_filename (Format.std_formatter) filename prefixname in
+  let module_id = Ident.create_persistent module_name in
   Lexing.(lexbuf.lex_curr_p <-
             { lexbuf.lex_curr_p with pos_fname = filename });
   Malfunction_parser.read_module lexbuf
-  |> module_to_lambda ~options
-  |> lambda_to_cmx ~options filename prefixname
+  |> module_to_lambda ~module_name ~module_id ~options
+  |> lambda_to_cmx ~options ~filename ~prefixname ~module_name ~module_id
 
 
 (* copied from opttoploop.ml *)
@@ -893,10 +982,13 @@ let compile_and_load ?(options : options =[]) e =
   let modname = "Malfunction_Code_" ^ string_of_int (!code_id) in
   let prefix = tmpdir ^ Filename.dir_sep ^ String.uncapitalize_ascii modname in
   let options = `Shared :: options in
+
+  let module_name = Compenv.module_of_filename (Format.std_formatter) "code" prefix in
+  let module_id = Ident.create_persistent module_name in
   let tmpfiles =
     Mmod([], [e])
-    |> module_to_lambda ~options
-    |> lambda_to_cmx ~options "code" prefix in
+    |> module_to_lambda ~options ~module_name ~module_id
+    |> lambda_to_cmx ~options ~filename:"code" ~prefixname:prefix ~module_name ~module_id in
   let cmxs = prefix ^ ".cmxs" in
   Asmlink.link_shared Format.err_formatter [tmpfiles.cmxfile] cmxs;
   delete_temps tmpfiles;

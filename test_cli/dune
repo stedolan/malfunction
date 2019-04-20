@@ -1,0 +1,7 @@
+(alias
+ (name runtest)
+ (deps (source_tree .) (package malfunction))
+ (action
+  (progn
+   (run %{bin:craml} test.t)
+   (diff? test.t test.t.corrected))))
