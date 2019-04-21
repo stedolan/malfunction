@@ -16,3 +16,6 @@
   $ ocamlopt module.cmx main.ml -o main
   $ ./main
   42
+  10
+  true false
+  111

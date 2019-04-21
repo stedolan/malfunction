@@ -7,8 +7,3 @@
  (name runtest)
  (deps (:prog test.exe) ../docs/spec.md (glob_files ../test/*.test))
  (action (run %{prog} ../docs/spec.md ../test)))
-
-(alias
- (name runtest)
- (deps (:prog ../test_cli/test.sh) ../src/malfunction_main.exe (source_tree ../test_cli) (package malfunction))
- (action (run %{prog} %{ocamlopt})))

@@ -15,5 +15,6 @@ depends: [
   "dune" {build}
   "cppo" {build}
   "omd" {test}
+  "craml" {test}
   "zarith"
 ]
