@@ -217,6 +217,11 @@ and parse_exp env (loc, sexp) = match sexp with
 
   | List ((_, Atom "global") :: path) ->
      Mglobal (path
+       |> (function
+           | (l, Var "Pervasives")::p ->
+              Printf.fprintf stderr "Warning: global $Pervasives is deprecated, use $Stdlib instead.\n";
+              (l, Var "Stdlib")::p
+           | p -> p)
        |> List.map (function
          | _, Var s -> s
          | _, _ -> fail loc "module path required")

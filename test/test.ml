@@ -42,14 +42,14 @@ let check_stub = "
     (seq
       (apply (global $Z $of_string) \"42\") ; ensure zarith loaded for unmarshalling
       (apply (global $Array $iter) (lambda ($x)
-        (apply (global $Pervasives $print_char)
+        (apply (global $Stdlib $print_char)
           (if (== 0
-                (apply (global $Pervasives $compare)
+                (apply (global $Stdlib $compare)
                        $x
-                       (apply (global $Marshal $from_channel) (global $Pervasives $stdin))))
+                       (apply (global $Marshal $from_channel) (global $Stdlib $stdin))))
               89
               78))) $xs)
-      (apply (global $Pervasives $print_newline) 0)))"
+      (apply (global $Stdlib $print_newline) 0)))"
 
 type test_result =
   [ `Bad_test of string (* expected output had undefined behaviour or was a function *)

@@ -283,6 +283,11 @@ end
 let lookup env v =
   let open Types in
   let open Primitive in
+  let rec stdlib_compat_hack : Longident.t -> Longident.t = function
+    | Lident "Stdlib" -> Lident (Malfunction_compat.stdlib_module_name)
+    | Ldot (id, s) -> Ldot (stdlib_compat_hack id, s)
+    | l -> l in
+  let v = stdlib_compat_hack v in
   let (path, descr) =
     try
       Env.lookup_value (* ~loc:(parse_loc loc) *) v env

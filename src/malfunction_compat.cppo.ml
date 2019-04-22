@@ -7,6 +7,13 @@ module Stdlib =
   Stdlib
 #endif
 
+let stdlib_module_name =
+#if OCAML_VERSION < (4,07,0)
+  "Pervasives"
+#else
+  "Stdlib"
+#endif
+
 let fresh =
 #if OCAML_VERSION < (4, 08, 0)
   Ident.create

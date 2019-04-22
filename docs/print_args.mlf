@@ -18,7 +18,7 @@
   ; use standard library functions
 
   ($print (lambda ($s)
-    (apply (global $Pervasives $print_endline) $s)))
+    (apply (global $Stdlib $print_endline) $s)))
   (_ (apply (global $List $iter) $print $argv_list))
 
   (export))

@@ -365,7 +365,7 @@ If evaluating `E` produces side effects, these occur at the time that
 
 OCaml values can be accessed from Malfunction programs by specifying a
 module path using `global`. For instance, the OCaml function
-`Pervasives.print_string` is referred to as `(global $Pervasives $print_string)`.
+`Stdlib.print_string` is referred to as `(global $Stdlib $print_string)`.
 
 As well as calling OCaml functions, certain OCaml values can be
 directly manipulated. The integer types `int`, `int32` and `int64`

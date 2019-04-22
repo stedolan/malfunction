@@ -8,7 +8,7 @@ compiler's guts that were never meant to see the light of day.
 "Hello, World" looks like this:
 
     (module
-      (_ (apply (global $Pervasives $print_string) "Hello, world!\n"))
+      (_ (apply (global $Stdlib $print_string) "Hello, world!\n"))
       (export))
 
 Malfunction requires OCaml (at least version 4.04.0, and you may see
