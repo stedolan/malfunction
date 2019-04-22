@@ -1,8 +1,8 @@
 (ocamllex (modules malfunction_sexp))
 
 (rule
- (targets malfunction_compiler.ml)
- (deps malfunction_compiler.cppo.ml)
+ (targets malfunction_compat.ml)
+ (deps malfunction_compat.cppo.ml)
  (action (run %{bin:cppo} %{deps} -V OCAML:%{ocaml_version} -o %{targets})))
 
 (executable

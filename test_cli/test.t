@@ -11,7 +11,7 @@
   $ ./exec
   Hello, world!
 
-  $ ocamlopt -c module.mli
+  $ ocamlc -opaque -c module.mli
   $ malfunction cmx module.mlf
   $ ocamlopt module.cmx main.ml -o main
   $ ./main

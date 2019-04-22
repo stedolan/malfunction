@@ -3,6 +3,7 @@ open Asttypes
 
 open Malfunction
 open Malfunction_parser
+open Malfunction_compat
 
 (* List.map, but guarantees left-to-right evaluation *)
 let rec lrmap f = function
@@ -100,67 +101,12 @@ and reorder_sub p f =
     match reorder e with
     | `Pure, e -> e
     | `Impure, e ->
-       let id = Ident.create "tmp" in
+       let id = fresh "tmp" in
        bindings := (`Named (id, e)) :: !bindings;
        Mvar id) in
   match List.rev !bindings with
   | [] -> p, r
   | bindings -> `Impure, (Mlet (bindings, r))
-
-
-let lprim p args =
-#if OCAML_VERSION < (4, 04, 0)
-  Lprim (p, args)
-#else
-  Lprim (p, args, Location.none)
-#endif
-
-let llet id exp body =
-#if OCAML_VERSION < (4, 04, 0)
-  Llet (Strict, id, exp, body)
-#else
-  Llet (Strict, Pgenval, id, exp, body)
-#endif
-
-let lfunction params body =
-  Lfunction {
-     kind = Curried;
-     params;
-     body;
-     attr = {
-       inline = Default_inline;
-       specialise = Default_specialise;
-       is_a_functor = false
-#if OCAML_VERSION >= (4, 05, 0)
-       ; stub = false
-#endif
-     };
-#if OCAML_VERSION >= (4, 04, 0)
-     loc = Location.none
-#endif
-   }
-
-
-let lswitch (scr : lambda) (swi : lambda_switch) =
-#if OCAML_VERSION >= (4, 06, 0)
-  Lswitch(scr, swi, Location.none)
-#else
-  Lswitch(scr, swi)
-#endif
-
-let pmakeblock tag mut =
-#if OCAML_VERSION < (4, 04, 0)
-  Pmakeblock (tag, mut)
-#else
-  Pmakeblock (tag, mut, None)
-#endif
-
-let transl_value_path =
-#if OCAML_VERSION >= (4, 06, 0)
-  Lambda.transl_value_path
-#else
-  Lambda.transl_path
-#endif
 
 module IntSwitch = struct
 
@@ -255,12 +201,7 @@ module IntSwitch = struct
     type primitive = Lambda.primitive
 
     let eqint = Pintcomp Ceq
-    let neint =
-#if OCAML_VERSION >= (4, 07, 0)
-       Pintcomp Cne
-#else
-       Pintcomp Cneq
-#endif
+    let neint = pintcomp_cne
     let leint = Pintcomp Cle
     let ltint = Pintcomp Clt
     let geint = Pintcomp Cge
@@ -277,18 +218,14 @@ module IntSwitch = struct
       let newvar,newarg = match arg with
       | Lvar v -> v,arg
       | _      ->
-          let newvar = Ident.create "switcher" in
+          let newvar = fresh "switcher" in
           newvar,Lvar newvar in
       bind Alias newvar arg (body newarg)
     let make_const i = Lconst (Const_base (Const_int i))
     let make_isout h arg = lprim Pisout [h ; arg]
     let make_isin h arg = lprim Pnot [make_isout h arg]
     let make_if cond ifso ifnot = Lifthenelse (cond, ifso, ifnot)
-    let make_switch
-#if OCAML_VERSION >= (4, 06, 0)
-      _loc
-#endif
-      arg cases acts =
+    let make_switch arg cases acts =
       let l = ref [] in
       for i = Array.length cases-1 downto 0 do
         l := (i,acts.(cases.(i))) ::  !l
@@ -297,6 +234,7 @@ module IntSwitch = struct
         {sw_numconsts = Array.length cases ; sw_consts = !l ;
          sw_numblocks = 0 ; sw_blocks =  []  ;
          sw_failaction = None}
+    let make_switch = make_switch_loc make_switch
     let make_catch d =
       match d with
       | Lstaticraise (i, []) -> i, (fun e -> e)
@@ -339,11 +277,7 @@ module IntSwitch = struct
         act_store_shared = (fun _ -> failwith "store_shared unimplemented") } in
     let cases = Array.of_list cases in
     let (low, _, _) = cases.(0) and (_, high, _) = cases.(Array.length cases - 1) in
-    Switcher.zyva
-#if OCAML_VERSION >= (4, 06, 0)
-      Location.none
-#endif
-      (low, high) scr cases store
+    with_loc Switcher.zyva Location.none (low, high) scr cases store
 end
 
 let lookup env v =
@@ -361,7 +295,7 @@ let lookup env v =
       with Not_found ->
         failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
   match descr.val_kind with
-  | Val_reg -> `Val (transl_value_path (* ~loc:(parse_loc loc) *) env path)
+  | Val_reg -> `Val (transl_value_path (Location.none) env path)
   | Val_prim(p) ->
      let p = match p.prim_name with
        | "%equal" ->
@@ -457,7 +391,7 @@ let rec to_lambda env = function
             | (`Deftag, _) as c :: cases -> partition (ints, tags, Some c) cases
             | (`Intrange _, _) as c :: cases -> partition (c :: ints, tags, deftag) cases in
           let (intcases, tagcases, deftag) = partition ([],[],None) (List.rev acc) in
-          let id = Ident.create "switch" in
+          let id = fresh "switch" in
           llet id scr (
             let scr = Lvar id in
             let tagswitch = match tagcases, deftag with
@@ -512,11 +446,7 @@ let rec to_lambda env = function
        | `Int ->
           (match op with
             `Add -> Paddint | `Sub -> Psubint | `Mul -> Pmulint
-#if OCAML_VERSION < (4, 04, 0)
-          | `Div -> Pdivint | `Mod -> Pmodint
-#else
           | `Div -> Pdivint Safe | `Mod -> Pmodint Safe
-#endif
           | `And -> Pandint | `Or -> Porint | `Xor -> Pxorint
           | `Lsl -> Plslint | `Lsr -> Plsrint | `Asr -> Pasrint
           | `Lt -> Pintcomp Clt | `Gt -> Pintcomp Cgt
@@ -526,12 +456,8 @@ let rec to_lambda env = function
           let t = match ty with `Int32 -> Pint32  | `Int64 -> Pint64 in
           (match op with
             `Add -> Paddbint t | `Sub -> Psubbint t | `Mul -> Pmulbint t
-#if OCAML_VERSION < (4, 04, 0)
-          | `Div -> Pdivbint t | `Mod -> Pmodbint t
-#else
           | `Div -> Pdivbint { size = t; is_safe = Safe }
           | `Mod -> Pmodbint { size = t; is_safe = Safe }
-#endif
           | `And -> Pandbint t | `Or -> Porbint t | `Xor -> Pxorbint t
           | `Lsl -> Plslbint t | `Lsr -> Plsrbint t | `Asr -> Pasrbint t
           | `Lt -> Pbintcomp (t, Clt) | `Gt -> Pbintcomp (t, Cgt)
@@ -560,21 +486,7 @@ let rec to_lambda env = function
      | `Div -> lprim Pdivfloat [e1; e2]
      | `Mod -> builtin env ["Pervasives"; "mod_float"] [e1; e2]
      | #binary_comparison as op ->
-#if OCAML_VERSION < (4, 07, 0)
-        let cmp : Lambda.comparison = match op with
-          | `Lt -> Cle
-          | `Gt -> Cgt
-          | `Lte -> Cle
-          | `Gte -> Cge
-          | `Eq -> Ceq in
-#else
-        let cmp : Lambda.float_comparison = match op with
-          | `Lt -> CFlt
-          | `Gt -> CFgt
-          | `Lte -> CFle
-          | `Gte -> CFge
-          | `Eq -> CFeq in
-#endif
+        let cmp = cmp_to_float_comparison op in
         lprim (Pfloatcomp cmp) [e1; e2]
      end
   | Mconvert (src, dst, e) ->
@@ -591,9 +503,9 @@ let rec to_lambda env = function
             | `Int -> Sys.word_size - 1
             | `Int32 -> 32
             | `Int64 -> 64 in
-          let range_id = Ident.create "range" in
+          let range_id = fresh "range" in
           let range = Z.(shift_left (of_int 1) width) in
-          let masked_id = Ident.create "masked" in
+          let masked_id = fresh "masked" in
           let truncated =
             llet range_id 
                  (builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string range))])
@@ -653,31 +565,19 @@ let rec to_lambda env = function
   | Mvecget (ty, vec, idx) ->
      let prim = match ty with
        | `Array -> Parrayrefs Paddrarray
-#if OCAML_VERSION < (4, 04, 0)
-       | `Bytevec -> Pstringrefs
-#else
        | `Bytevec -> Pbytesrefs
-#endif
 (*       | `Floatvec -> Parrayrefs Pfloatarray *) in
      lprim prim [to_lambda env vec; to_lambda env idx]
   | Mvecset (ty, vec, idx, v) ->
      let prim = match ty with
        | `Array -> Parraysets Paddrarray
-#if OCAML_VERSION < (4, 04, 0)
-       | `Bytevec -> Pstringsets
-#else
        | `Bytevec -> Pbytessets
-#endif
 (*       | `Floatvec -> Parraysets Pfloatarray *) in
      lprim prim [to_lambda env vec; to_lambda env idx; to_lambda env v]
   | Mveclen (ty, vec) ->
      let prim = match ty with
        | `Array -> Parraylength Paddrarray
-#if OCAML_VERSION < (4, 04, 0)
-       | `Bytevec -> Pstringlength
-#else
        | `Bytevec -> Pbyteslength
-#endif
 (*       | `Floatvec -> Parraylength Pfloatarray *) in
      lprim prim [to_lambda env vec]
   | Mblock (tag, vals) ->
@@ -685,7 +585,7 @@ let rec to_lambda env = function
   | Mfield (idx, e) ->
       lprim (Pfield(idx)) [to_lambda env e]
   | Mlazy e ->
-     let fn = lfunction [Ident.create "param"] (to_lambda env e) in
+     let fn = lfunction [fresh "param"] (to_lambda env e) in
      lprim (pmakeblock Config.lazy_tag Mutable) [fn]
   | Mforce e ->
      Matching.inline_lazy_force (to_lambda env e) Location.none
@@ -735,25 +635,6 @@ let setup_options options =
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   Compmisc.init_path true
 
-module Subst : sig
-  type t
-  val empty : t
-  val add : Ident.t -> Lambda.lambda -> t -> t
-  val apply : t -> Lambda.lambda -> Lambda.lambda
-end = struct
-#if OCAML_VERSION < (4,07,0)
-  type t = Lambda.lambda Ident.tbl
-  let empty = Ident.empty
-  let add = Ident.add
-  let apply = Lambda.subst_lambda
-#else
-  type t = Lambda.lambda Ident.Map.t
-  let empty = Ident.Map.empty
-  let add = Ident.Map.add
-  let apply = Lambda.subst
-#endif
-end
-
 let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports)) =
   setup_options (match options with Some o -> o | None -> []);
   let print_if flag printer arg =
@@ -775,14 +656,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
          then compile the exports. See Translmod.transl_store_gen. *)
       let module_length = ref (-1) in
       let mod_store pos e =
-        let init =
-#if OCAML_VERSION < (4, 05, 0)
-          Initialization
-#else
-          Root_initialization
-#endif
-        in
-        Lprim (Psetfield (pos, Pointer, init),
+        Lprim (Psetfield (pos, Pointer, root_initialization),
                [Lprim (Pgetglobal module_id, [], loc); e], loc) in
       let mod_load pos =
         Lprim (Pfield pos,
@@ -822,11 +696,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
 
   let lambda = code
   |> print_if Clflags.dump_rawlambda Printlambda.lambda
-#if OCAML_VERSION < (4, 04, 0)
-  |> Simplif.simplify_lambda
-#else
   |> Simplif.simplify_lambda "malfunction"
-#endif
   |> print_if Clflags.dump_lambda Printlambda.lambda in
 
   (module_size, lambda)
@@ -848,8 +718,6 @@ type outfiles = {
 }
 
 
-type lambda_mod = int * Lambda.lambda
-
 let delete_temps { objfile; cmxfile; cmifile } =
   Misc.remove_file objfile;
   Misc.remove_file cmxfile;
@@ -868,25 +736,15 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (s
   } in
   setup_options options;
   try
-#if OCAML_VERSION < (4, 06, 0)
-    let source_provenance = Timings.File filename in
-#endif
     let cmi = module_name ^ ".cmi" in
     Env.set_unit_name module_name;
-    Compilenv.reset
-#if OCAML_VERSION < (4, 06, 0)
-      ~source_provenance
-#endif
-      ?packname:!Clflags.for_package module_name;
-    ignore (match Misc.find_in_path_uncap !Config.load_path cmi with
+    with_source_provenance filename (Compilenv.reset
+      ?packname:!Clflags.for_package module_name);
+    ignore (match load_path_find cmi with
         | file -> Env.read_signature module_name file
         | exception Not_found ->
            let chop_ext =
-             #if OCAML_VERSION < (4, 04, 0)
-               Misc.chop_extension_if_any
-             #else
                Misc.chop_extensions
-             #endif
              in
            let mlifile = chop_ext filename ^ !Config.interface_suffix in
            if Sys.file_exists mlifile then
@@ -913,36 +771,26 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (s
     if Config.flambda then begin
       code
       |> (fun lam ->
-        Middle_end.middle_end ppf
-#if OCAML_VERSION < (4, 06, 0)
-          ~source_provenance
-#endif
+        with_source_provenance filename (with_ppf_dump ppf Middle_end.middle_end)
           ~prefixname
+          ~backend
           ~size
           ~filename
           ~module_ident:module_id
-          ~backend
           ~module_initializer:lam)
-      |> Asmgen.compile_implementation_flambda
-#if OCAML_VERSION < (4, 06, 0)
-          ~source_provenance
-#endif
+      |> with_ppf_dump ppf (
+          with_source_provenance filename (Asmgen.compile_implementation_flambda ?toplevel:None)
           prefixname
-          ~backend
-#if OCAML_VERSION >= (4, 04, 0)
           ~required_globals
-#endif
-          ppf
+          ~backend)
     end else begin
       (* FIXME: main_module_block_size is wrong *)
       code
       |> (fun code -> Lambda.{ module_ident = module_id; required_globals;
                                code; main_module_block_size = size })
-      |> Asmgen.compile_implementation_clambda
-#if OCAML_VERSION < (4, 06, 0)
-           ~source_provenance
-#endif
-           prefixname ppf;
+      |> with_ppf_dump ppf
+         (with_source_provenance filename (Asmgen.compile_implementation_clambda ?toplevel:None)
+           prefixname);
     end;
     Compilenv.save_unit_info !outfiles.cmxfile;
     Warnings.check_fatal ();
@@ -951,17 +799,27 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (s
     delete_temps !outfiles;
     raise e
 
-
-let compile_cmx ?(options=[]) filename =
+let compile_module ?(options=[]) ~filename modl =
+  (* FIXME: do we really want to go through Clflags here? See Compenv.output_prefix *)
   let prefixname = Compenv.output_prefix filename in
-  let lexbuf = Lexing.from_channel (open_in filename) in
-  let module_name = Compenv.module_of_filename (Format.std_formatter) filename prefixname in
+  let module_name =
+    prefixname
+    |> Filename.basename
+    |> Filename.remove_extension
+    |> String.capitalize_ascii in
+  if not (Compenv.is_unit_name module_name) then
+    raise (Invalid_argument ("Invalid module name " ^ module_name));
   let module_id = Ident.create_persistent module_name in
-  Lexing.(lexbuf.lex_curr_p <-
-            { lexbuf.lex_curr_p with pos_fname = filename });
-  Malfunction_parser.read_module lexbuf
+  modl
   |> module_to_lambda ~module_name ~module_id ~options
   |> lambda_to_cmx ~options ~filename ~prefixname ~module_name ~module_id
+
+let compile_cmx ?(options=[]) filename =
+  let lexbuf = Lexing.from_channel (open_in filename) in
+  Lexing.(lexbuf.lex_curr_p <-
+            { lexbuf.lex_curr_p with pos_fname = filename });
+  let modl = Malfunction_parser.read_module lexbuf in
+  compile_module ~options ~filename modl
 
 
 (* copied from opttoploop.ml *)
@@ -982,15 +840,9 @@ let compile_and_load ?(options : options =[]) e =
   let modname = "Malfunction_Code_" ^ string_of_int (!code_id) in
   let prefix = tmpdir ^ Filename.dir_sep ^ String.uncapitalize_ascii modname in
   let options = `Shared :: options in
-
-  let module_name = Compenv.module_of_filename (Format.std_formatter) "code" prefix in
-  let module_id = Ident.create_persistent module_name in
-  let tmpfiles =
-    Mmod([], [e])
-    |> module_to_lambda ~options ~module_name ~module_id
-    |> lambda_to_cmx ~options ~filename:"code" ~prefixname:prefix ~module_name ~module_id in
+  let tmpfiles = compile_module ~options ~filename:"code" (Mmod ([], [e])) in
   let cmxs = prefix ^ ".cmxs" in
-  Asmlink.link_shared Format.err_formatter [tmpfiles.cmxfile] cmxs;
+  with_ppf_dump Format.err_formatter Asmlink.link_shared [tmpfiles.cmxfile] cmxs;
   delete_temps tmpfiles;
   (match ndl_run_toplevel cmxs modname with
   | Ok _ -> ()

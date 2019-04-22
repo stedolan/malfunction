@@ -9,7 +9,7 @@ build:
 [[ "jbuilder" "build" "--only-packages" "%{name}%" "--root" "." "-j" jobs "@install" ]]
 build-test:
 [[ "jbuilder" "build" "--only-packages" "%{name}%" "--root" "." "-j" jobs "@runtest" ]]
-available: [ ocaml-version >= "4.03" ]
+available: [ ocaml-version >= "4.04" ]
 depends: [
   "ocamlfind"
   "dune" {build}

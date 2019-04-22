@@ -26,6 +26,8 @@ and reify_block n xs =
   Array.iteri (Obj.set_field o) (Array.map reify xs);
   o
 
+module Pervasives = Malfunction_compat.Stdlib
+
 let check xs =
   Array.iter (fun a ->
   Pervasives.print_char
@@ -70,20 +72,15 @@ let try_run_tests cases =
   let testcases = cases |> List.map @@ function
     | `Bad_test _ | `Undefined _ -> Mnum (`Int 0)
     | `Match (test, _) | `NoMatch (test, _) -> test in
-  let code =
-    Mmod ([`Unnamed (Mapply (checker, [Mblock (0, testcases)]))], []) in
+
   let temps = ref None in
   let delete_temps () =
     Misc.remove_file exec_name;
     match !temps with Some t -> Malfunction_compiler.delete_temps t | None -> () in
 
-  let module_name = Compenv.module_of_filename (Format.std_formatter) exec_name exec_name in
-  let module_id = Ident.create_persistent module_name in
-
   begin match
-    code
-    |> Malfunction_compiler.module_to_lambda ~module_name ~module_id
-    |> Malfunction_compiler.lambda_to_cmx ~filename:exec_name ~prefixname:exec_name ~module_name ~module_id
+    Mmod ([`Unnamed (Mapply (checker, [Mblock (0, testcases)]))], [])
+    |> Malfunction_compiler.compile_module ~filename:exec_name
     |> (fun t -> temps := Some t; t)
     |> Malfunction_compiler.link_executable exec_name
   with

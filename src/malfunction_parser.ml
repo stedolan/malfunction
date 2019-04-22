@@ -22,7 +22,7 @@ let parse_arglist = function
   | loc, List args ->
      let idents = args |> List.map (function
        | _loc, Var s ->
-          s, Ident.create s
+          s, fresh s
        | loc, _ -> fail loc "Expected a list of variables") in
      let env = List.fold_left (fun env (s, ident) ->
        if StrMap.mem s env then
@@ -99,13 +99,13 @@ let rec parse_bindings loc env acc = function
   | (loc, List [_, Atom "_"; e]) :: bindings ->
      parse_bindings loc env (`Unnamed (parse_exp env e) :: acc) bindings
   | (loc, List [_, Var s; e]) :: bindings ->
-     let ident = Ident.create s in
+     let ident = fresh s in
      let env' = bind_local loc env s ident in
      parse_bindings loc env' (`Named (ident, parse_exp env e) :: acc) bindings
   | (loc, List ((_, Atom "rec") :: recs)) :: bindings ->
      let recs = recs |> List.map (function
        | _, List [_, Var s; _, List ((_, Atom "lambda") :: _) as e] ->
-          (s, Ident.create s, e)
+          (s, fresh s, e)
        | _, List [_, Var _; _] ->
           fail loc "all members of a recursive binding must be functions"
        | loc, _ ->

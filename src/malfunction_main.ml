@@ -33,7 +33,9 @@ let run mode options impl output =
   Findlib.init ();
   match mode, impl with
   | `Cmx, Some file ->
-     with_error_reporting Format.std_formatter 1 (fun () -> let _ = Malfunction_compiler.compile_cmx ~options file in 0)
+     with_error_reporting Format.std_formatter 1 (fun () ->
+       let _ = Malfunction_compiler.compile_cmx ~options file in
+       0)
   | `Compile, Some file ->
      with_error_reporting Format.std_formatter 1 (fun () ->
        let tmpfiles = Malfunction_compiler.compile_cmx ~options file in

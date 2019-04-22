@@ -63,7 +63,7 @@ and binding =
 
 type var = Ident.t
 
-let fresh n = Ident.create n
+let fresh = Malfunction_compat.fresh
 
 let bind_val e body =
   let v = fresh "x" in
@@ -122,6 +122,7 @@ let with_error_reporting ppf def f =
          locstart.pos_fname locstart.pos_lnum (locstart.pos_cnum - locstart.pos_bol) locend.pos_lnum (locend.pos_cnum - locend.pos_bol) msg;
      def
   | x ->
+     Printexc.print_backtrace stdout;
      Location.report_exception ppf x;
     def
 
