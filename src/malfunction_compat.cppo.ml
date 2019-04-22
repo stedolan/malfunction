@@ -22,20 +22,6 @@ let fresh =
 #endif
 
 
-let lprim p args =
-#if OCAML_VERSION < (4, 04, 0)
-  Lprim (p, args)
-#else
-  Lprim (p, args, Location.none)
-#endif
-
-let llet id exp body =
-#if OCAML_VERSION < (4, 04, 0)
-  Llet (Strict, id, exp, body)
-#else
-  Llet (Strict, Pgenval, id, exp, body)
-#endif
-
 let lswitch (scr : lambda) (swi : lambda_switch) =
 #if OCAML_VERSION >= (4, 06, 0)
   Lswitch(scr, swi, Location.none)
@@ -67,13 +53,6 @@ let lfunction params body =
      return = Pgenval;
 #endif
    }
-
-let pmakeblock tag mut =
-#if OCAML_VERSION < (4, 04, 0)
-  Pmakeblock (tag, mut)
-#else
-  Pmakeblock (tag, mut, None)
-#endif
 
 let transl_value_path loc env path =
 #if OCAML_VERSION >= (4, 08, 0)

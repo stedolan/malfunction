@@ -8,3 +8,4 @@
 (context (opam (switch 4.07.1+flambda)))
 (context (opam (switch 4.07.1) (merlin)))
 (context (opam (switch ocaml-variants.4.08.0+beta2)))
+(context (opam (switch ocaml-variants.4.08.0+beta2+flambda)))

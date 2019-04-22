@@ -10,6 +10,11 @@ let rec lrmap f = function
 | [] -> []
 | (x :: xs) -> let r = f x in r :: lrmap f xs
 
+let lprim p args = Lprim (p, args, Location.none)
+let lbind n exp body =
+  let id = fresh n in
+  Llet (Strict, Pgenval, id, exp, body (Lvar id))
+
 (* Enforce left-to-right evaluation order by introducing 'let' bindings *)
 
 let rec reorder = function
@@ -396,9 +401,7 @@ let rec to_lambda env = function
             | (`Deftag, _) as c :: cases -> partition (ints, tags, Some c) cases
             | (`Intrange _, _) as c :: cases -> partition (c :: ints, tags, deftag) cases in
           let (intcases, tagcases, deftag) = partition ([],[],None) (List.rev acc) in
-          let id = fresh "switch" in
-          llet id scr (
-            let scr = Lvar id in
+          lbind "switch" scr (fun scr ->
             let tagswitch = match tagcases, deftag with
               | [], None -> None
               | [_,e], None | [], Some (_, e) -> Some e
@@ -508,20 +511,20 @@ let rec to_lambda env = function
             | `Int -> Sys.word_size - 1
             | `Int32 -> 32
             | `Int64 -> 64 in
-          let range_id = fresh "range" in
           let range = Z.(shift_left (of_int 1) width) in
-          let masked_id = fresh "masked" in
           let truncated =
-            llet range_id 
-                 (builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string range))])
-            (llet masked_id
+            lbind "range"
+             (builtin env ["Z"; "of_string"] [Lconst (Const_immstring (Z.to_string range))])
+             (fun range ->
+               lbind "masked"
                  (builtin env ["Z"; "logand"] [e;
-                      builtin env ["Z"; "sub"] [Lvar range_id;
+                      builtin env ["Z"; "sub"] [range;
                                                 Lconst (Const_base (Const_int 1))]])
-            (Lifthenelse (builtin env ["Z"; "testbit"] 
-                                 [Lvar masked_id; Lconst (Const_base (Const_int (width - 1)))],
-                         builtin env ["Z"; "sub"] [Lvar masked_id; Lvar range_id],
-                         Lvar masked_id))) in
+                 (fun masked ->
+                   Lifthenelse (builtin env ["Z"; "testbit"] 
+                                  [masked; Lconst (Const_base (Const_int (width - 1)))],
+                                builtin env ["Z"; "sub"] [masked; range],
+                                masked))) in
           let fn = match dst with
             | `Int -> "to_int"
             | `Int32 -> "to_int32"
@@ -586,12 +589,12 @@ let rec to_lambda env = function
 (*       | `Floatvec -> Parraylength Pfloatarray *) in
      lprim prim [to_lambda env vec]
   | Mblock (tag, vals) ->
-     lprim (pmakeblock tag Immutable) (List.map (to_lambda env) vals)
+     lprim (Pmakeblock (tag, Immutable, None)) (List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
       lprim (Pfield(idx)) [to_lambda env e]
   | Mlazy e ->
      let fn = lfunction [fresh "param"] (to_lambda env e) in
-     lprim (pmakeblock Config.lazy_tag Mutable) [fn]
+     lprim (Pmakeblock (Config.lazy_tag, Mutable, None)) [fn]
   | Mforce e ->
      Matching.inline_lazy_force (to_lambda env e) Location.none
 
@@ -600,7 +603,7 @@ and bindings_to_lambda env bindings body =
   | `Unnamed e ->
      Lsequence (to_lambda env e, rest)
   | `Named (n, e) ->
-     llet n (to_lambda env e) rest
+     Llet (Strict, Pgenval, n, to_lambda env e, rest)
   | `Recursive bs ->
      Lletrec (List.map (fun (n, e) -> (n, to_lambda env e)) bs, rest))
     bindings body
@@ -653,7 +656,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
     if Config.flambda then
       List.length exports,
       bindings_to_lambda env bindings
-        (lprim (pmakeblock 0 Immutable) (List.map (to_lambda env) exports))
+        (lprim (Pmakeblock (0, Immutable, None)) (List.map (to_lambda env) exports))
     else begin
       let loc = Location.none (* FIXME *) in
       let num_exports = List.length exports in
@@ -675,7 +678,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
                       transl_toplevel_bindings pos subst rest)
         | `Named (n, e) :: rest ->
            let lam =
-             llet n (Subst.apply subst (to_lambda env e)) (mod_store pos (Lvar n)) in
+             Llet (Strict, Pgenval, n, Subst.apply subst (to_lambda env e), mod_store pos (Lvar n)) in
            Lsequence (lam,
                       transl_toplevel_bindings
                         (pos + 1)
