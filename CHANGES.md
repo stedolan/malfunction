@@ -1,7 +1,8 @@
-????
+v0.3 (24th April 2019)
 ---------------------
 
-Support for OCaml 4.06 and 4.07
+Support for OCaml 4.06, 4.07 and 4.08+beta2
+Support for non-Flambda builds
 Dune support (replacing jbuilder)
 Lazy evaluation (lazy E and force E)
 Floating-point numbers
