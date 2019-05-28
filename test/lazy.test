@@ -30,3 +30,8 @@
       ($b (lazy (block (tag 0) 42 (lazy (force $a))))))
     (block (tag 0) (force (field 1 (force $b))) (force $a)))
   (block (tag 0) 42 42))
+
+(test
+  (let (rec ($a (lazy (block (tag 0) 42 $a))))
+    (block (tag 0) (field 0 (force $a)) (field 0 (force (field 1 (force $a))))))
+  (block (tag 0) 42 42))
