@@ -203,8 +203,8 @@ Each binding is of one of the forms:
   - `(_ EXP)`: evaluates `EXP` and ignores the result
   - `(rec ($VAR1 EXP1) ($VAR2 EXP2) ...)`: binds each `$VAR` mutually
     recursively. Each `EXP` must be of the form `(lambda
-    ...)`. Bindings scope over themselves, each other, subsequent
-    bindings, and the body
+    ...)` or `(lazy ...)`. Bindings scope over themselves,
+    each other, subsequent bindings, and the body.
 
 For example, here is a definition of the "even" and "odd" predicates
 on `int`s, and an application of them to check whether 42 is even (see

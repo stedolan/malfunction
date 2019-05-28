@@ -71,10 +71,18 @@ let rec interpret locals env : t -> value = function
           let values = Array.make n None in
           let locals = List.fold_right
             (fun (x, e) locals -> Ident.Map.add x e locals)
-            (List.mapi (fun i (x, _) ->
-              (x, Func (fun v -> match values.(i) with
-              | Some (Func f) -> f v
-              | _ -> fail "bad recursive binding"))) recs)
+            (List.mapi (fun i (x, e) ->
+              let v = match e with
+                | Mlambda _ -> Func (fun arg ->
+                    match values.(i) with
+                    | Some (Func f) -> f arg
+                    | _ -> fail "bad recursive function binding")
+                | Mlazy _ -> Thunk (lazy (
+                    match values.(i) with
+                    | Some (Thunk t) -> Lazy.force t
+                    | _ -> fail "bad recursive lazy binding"))
+                | _ -> fail "recursive values must be functions or lazy" in
+              (x, v)) recs)
             locals in
           recs |> List.iteri (fun i (_, e) ->
             values.(i) <- Some (interpret locals env e));

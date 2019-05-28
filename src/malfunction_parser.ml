@@ -104,10 +104,10 @@ let rec parse_bindings loc env acc = function
      parse_bindings loc env' (`Named (ident, parse_exp env e) :: acc) bindings
   | (loc, List ((_, Atom "rec") :: recs)) :: bindings ->
      let recs = recs |> List.map (function
-       | _, List [_, Var s; _, List ((_, Atom "lambda") :: _) as e] ->
+       | _, List [_, Var s; _, List ((_, Atom ("lambda"|"lazy")) :: _) as e] ->
           (s, fresh s, e)
        | _, List [_, Var _; _] ->
-          fail loc "all members of a recursive binding must be functions"
+          fail loc "all members of a recursive binding must be functions or lazy"
        | loc, _ ->
           fail loc "expected recursive bindings") in
      let env' = List.fold_left (fun env (s, id, _) ->
