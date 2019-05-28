@@ -88,6 +88,11 @@ let rec interpret locals env : t -> value = function
   | Mstring s ->
      Vec (`Bytevec,
           Array.init (String.length s) (fun i -> Int (`Int, Z.of_int (Char.code (String.get s i)))))
+  (* This primitive is supported as a hack for testing. See prim.test *)
+  | Mglobal (Ldot (Lident "Stdlib", "**")) ->
+     Func (function Float a -> Func (function Float b -> Float (a ** b)
+                                            | _ -> fail "**: expected float")
+                  | _ -> fail "**: expected float")
   | Mglobal _v -> fail "globals unsupported"
      (*
      let (path, _descr) = Env.lookup_value v env in

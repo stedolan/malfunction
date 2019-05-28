@@ -285,6 +285,10 @@ module IntSwitch = struct
     with_loc Switcher.zyva Location.none (low, high) scr cases store
 end
 
+type global_value =
+  | Glob_val of lambda
+  | Glob_prim of Primitive.description
+
 let lookup env v =
   let open Types in
   let open Primitive in
@@ -305,7 +309,7 @@ let lookup env v =
       with Not_found ->
         failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
   match descr.val_kind with
-  | Val_reg -> `Val (transl_value_path (Location.none) env path)
+  | Val_reg -> Glob_val (transl_value_path (Location.none) env path)
   | Val_prim(p) ->
      let p = match p.prim_name with
        | "%equal" ->
@@ -316,7 +320,7 @@ let lookup env v =
           failwith ("unimplemented primitive " ^ p.prim_name);
        | _ ->
           p in
-     `Prim p
+     Glob_prim p
   | _ -> failwith "unexpected kind of value"
 
 
@@ -327,7 +331,7 @@ let builtin env path args =
          (Longident.Lident path1) pathrest
     | _ -> assert false in
   match lookup env p with
-  | `Val v ->
+  | Glob_val v ->
      Lapply {
        ap_func = v;
        ap_args = args;
@@ -336,8 +340,20 @@ let builtin env path args =
        ap_inlined = Default_inline;
        ap_specialised = Default_specialise
      }
-  | `Prim p ->
+  | Glob_prim p ->
+     assert (p.prim_arity = List.length args);
      lprim (Pccall p) args
+
+let global_to_lambda = function
+  | Glob_val v -> v
+  | Glob_prim p ->
+     (* Eta-expand this primitive. See translprim.ml. *)
+     let rec make_params n =
+       if n <= 0 then []
+       else fresh "prim" :: make_params (n-1) in
+     let params = make_params p.prim_arity in
+     let body = lprim (Pccall p) (List.map (fun x -> Lvar x) params) in
+     lfunction params body
 
 let rec to_lambda env = function
   | Mvar v ->
@@ -357,9 +373,10 @@ let rec to_lambda env = function
      (match fn with
      | Mglobal v ->
         (match lookup env v with
-        | `Val v -> ap_func v
-        | `Prim p ->
-           lprim (Pccall p) (List.map (to_lambda env) args))
+        | Glob_prim p when p.prim_arity = List.length args ->
+           lprim (Pccall p) (List.map (to_lambda env) args)
+        | g ->
+           ap_func (global_to_lambda g))
      | fn ->
         ap_func (to_lambda env fn))
   | Mlet (bindings, body) ->
@@ -382,9 +399,7 @@ let rec to_lambda env = function
   | Mstring s ->
      Lconst (Const_immstring s)
   | Mglobal v ->
-     (match lookup env v with
-     | `Val v -> v
-     | `Prim p -> failwith ("primitive " ^ Primitive.native_name p ^ " found where value expected"))
+     global_to_lambda (lookup env v)
   | Mswitch (scr, cases) ->
      let scr = to_lambda env scr in
      let rec flatten acc = function
