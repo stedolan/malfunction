@@ -1,7 +1,4 @@
-(* Staged compilation of primitive-recursive arithmetic.
-
-   After installing malfunction with `opam pin`, build using
-       ocamlbuild -use-ocamlfind examples/primrec.native *)
+(* Staged compilation of primitive-recursive arithmetic. *)
 
 (* Natural numbers (at type level) *)
 type zero = [`Zero]
