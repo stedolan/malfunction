@@ -16,4 +16,5 @@
  (public_name malfunction)
  (libraries compiler-libs.optcomp str zarith findlib dynlink unix)
  (wrapped false)
+ (modes native)
  (modules (:standard \ malfunction_main)))

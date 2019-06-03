@@ -1,7 +1,4 @@
-(* Staged compilation of primitive-recursive arithmetic.
-
-   After installing malfunction with `opam pin`, build using
-       ocamlbuild -use-ocamlfind examples/primrec.native *)
+(* Staged compilation of primitive-recursive arithmetic. *)
 
 (* Natural numbers (at type level) *)
 type zero = [`Zero]
@@ -65,13 +62,13 @@ let rec interpret : type k . k t -> k env -> int =
   | V v ->
      let rec lookup : type k . k env -> k v -> int =
        fun env var -> match var, env with
-       | ZV, Cons (env, n) -> n
+       | ZV, Cons (_env, n) -> n
        | SV v, Cons (env, _) -> lookup env v in
      lookup env v
   | Let (e, body) ->
      let v = interpret e env in
      interpret body (Cons (env, v))
-  | Rec {name; ifzero; ifsuc; n} ->
+  | Rec {name = _; ifzero; ifsuc; n} ->
      let n = interpret n env in
      let rec go n' fn' =
        if n = n' then fn' else
@@ -101,13 +98,13 @@ let rec compile : type k . k t -> k menv -> Malfunction.t =
        fun env var -> match var, env with
        | ZV, Params env -> Mfield(1, env)
        | SV v, Params env -> lookup (Params (Mfield (0, env))) v
-       | ZV, Local (env, v) -> v
+       | ZV, Local (_env, v) -> v
        | SV v, Local (env, _) -> lookup env v in
      lookup env v
   | Let (e, body) ->
      bind_val (compile e env) @@ fun v ->
      compile body (Local (env, v))
-  | Rec {name; ifzero; ifsuc; n} ->
+  | Rec {name = _; ifzero; ifsuc; n} ->
      bind_val (compile n env) @@ fun n ->
      bind_rec (fun go -> lambda2 @@ fun n' fn' ->
        if_ I.(n = n')
@@ -138,7 +135,7 @@ let benchmark name exec =
   (* to ensure same data for both implementations *)
   Random.init 432789;
   let tstart = Unix.gettimeofday () in
-  for i = 1 to 50 do
+  for _ = 1 to 50 do
     let a = Random.int 100 and b = Random.int 5 in
     assert (exec (env a b) = Z.(to_int (pow (of_int a) b)))
   done;
