@@ -656,7 +656,7 @@ let setup_options options =
      Clflags.shared := true);
 
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
-  Compmisc.init_path true
+  compmisc_init_path ()
 
 let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports)) =
   setup_options (match options with Some o -> o | None -> []);
@@ -719,7 +719,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
 
   let lambda = code
   |> print_if Clflags.dump_rawlambda Printlambda.lambda
-  |> Simplif.simplify_lambda "malfunction"
+  |> simplify_lambda
   |> print_if Clflags.dump_lambda Printlambda.lambda in
 
   (module_size, lambda)
@@ -794,7 +794,7 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (s
     if Config.flambda then begin
       code
       |> (fun lam ->
-        with_source_provenance filename (with_ppf_dump ppf Middle_end.middle_end)
+        with_source_provenance filename (with_ppf_dump ppf flambda_middle_end)
           ~prefixname
           ~backend
           ~size
@@ -812,7 +812,7 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (s
       |> (fun code -> Lambda.{ module_ident = module_id; required_globals;
                                code; main_module_block_size = size })
       |> with_ppf_dump ppf
-         (with_source_provenance filename (Asmgen.compile_implementation_clambda ?toplevel:None)
+         (with_source_provenance filename (asmgen_compile_implementation_clambda ~backend)
            prefixname);
     end;
     Compilenv.save_unit_info !outfiles.cmxfile;

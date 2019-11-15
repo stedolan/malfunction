@@ -154,3 +154,31 @@ let load_path_find name =
   Misc.find_in_path_uncap !Config.load_path name
 #endif
 
+let compmisc_init_path () =
+#if OCAML_VERSION < (4, 09, 0)
+  Compmisc.init_path true
+#else
+  Compmisc.init_path ()
+#endif
+
+let simplify_lambda lam =
+#if OCAML_VERSION < (4, 09, 0)
+  Simplif.simplify_lambda "malfunction" lam
+#else
+  Simplif.simplify_lambda lam
+#endif
+
+let flambda_middle_end =
+#if OCAML_VERSION < (4, 09, 0)
+  Middle_end.middle_end
+#else
+  Flambda_middle_end.middle_end
+#endif
+
+let asmgen_compile_implementation_clambda ~backend =
+#if OCAML_VERSION < (4, 09, 0)
+  ignore backend;
+  Asmgen.compile_implementation_clambda ?toplevel:None
+#else
+  Asmgen.compile_implementation_clambda ?toplevel:None ~backend
+#endif
