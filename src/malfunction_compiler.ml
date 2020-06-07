@@ -315,27 +315,244 @@ let lookup env v =
   match descr.val_kind with
   | Val_reg -> Glob_val (transl_value_path (Location.none) env path)
   | Val_prim(p) -> (
-     (* see docs/primitives.md on how to add more primitives *)
-     match p.prim_name with
-       | "%equal" ->
+      (* see docs/primitives.md on how to add more primitives *)
+      match p.prim_name with
+        | "%equal" ->
           Glob_prim (Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true)
-       | "%compare" ->
+        | "%compare" ->
           Glob_prim (Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true)
-       | "%string_length" ->
-          Glob_lam (Pstringlength, 1);
-       | "%string_safe_get" ->
-          Glob_lam (Pstringrefs, 2);
-       | "%string_unsafe_get" ->
-          Glob_lam (Pstringrefu, 2);
-       | "%array_unsafe_get" ->
-          Glob_lam ((Parrayrefu gen_array_kind), 2);
-       | "%array_unsafe_set" ->
-          Glob_lam ((Parraysetu gen_array_kind), 3);
-       | "%field0" -> Glob_lam ((Pfield 0), 1);
-       | "%setfield0" -> Glob_lam ((Psetfield(0, Pointer, Assignment)), 2);
-       | s when s.[0] = '%' ->
+
+        (* taken from translprim.ml *)
+        | "%identity" -> Glob_lam (Pidentity, 1);
+        | "%bytes_to_string" -> Glob_lam (Pbytes_to_string, 1);
+        | "%bytes_of_string" -> Glob_lam (Pbytes_of_string, 1);
+        | "%ignore" -> Glob_lam (Pignore, 1);
+        | "%revapply" -> Glob_lam (Prevapply, 2);
+        | "%apply" -> Glob_lam (Pdirapply, 2);
+        | "%field0" -> Glob_lam ((Pfield 0), 1);
+        | "%field1" -> Glob_lam ((Pfield 1), 1);
+        | "%setfield0" -> Glob_lam ((Psetfield(0, Pointer, Assignment)), 2);
+        | "%makeblock" -> Glob_lam ((Pmakeblock(0, Immutable, None)), 1);
+        | "%makemutable" -> Glob_lam ((Pmakeblock(0, Mutable, None)), 1);
+        | "%sequand" -> Glob_lam (Psequand, 2);
+        | "%sequor" -> Glob_lam (Psequor, 2);
+        | "%boolnot" -> Glob_lam (Pnot, 1);
+        | "%big_endian" -> Glob_lam ((Pctconst Big_endian), 1);
+        | "%backend_type" -> Glob_lam ((Pctconst Backend_type), 1);
+        | "%word_size" -> Glob_lam ((Pctconst Word_size), 1);
+        | "%int_size" -> Glob_lam ((Pctconst Int_size), 1);
+        | "%max_wosize" -> Glob_lam ((Pctconst Max_wosize), 1);
+        | "%ostype_unix" -> Glob_lam ((Pctconst Ostype_unix), 1);
+        | "%ostype_win32" -> Glob_lam ((Pctconst Ostype_win32), 1);
+        | "%ostype_cygwin" -> Glob_lam ((Pctconst Ostype_cygwin), 1);
+        | "%negint" -> Glob_lam (Pnegint, 1);
+        | "%succint" -> Glob_lam ((Poffsetint 1), 1);
+        | "%predint" -> Glob_lam ((Poffsetint(-1)), 1);
+        | "%addint" -> Glob_lam (Paddint, 2);
+        | "%subint" -> Glob_lam (Psubint, 2);
+        | "%mulint" -> Glob_lam (Pmulint, 2);
+        | "%divint" -> Glob_lam ((Pdivint Safe), 2);
+        | "%modint" -> Glob_lam ((Pmodint Safe), 2);
+        | "%andint" -> Glob_lam (Pandint, 2);
+        | "%orint" -> Glob_lam (Porint, 2);
+        | "%xorint" -> Glob_lam (Pxorint, 2);
+        | "%lslint" -> Glob_lam (Plslint, 2);
+        | "%lsrint" -> Glob_lam (Plsrint, 2);
+        | "%asrint" -> Glob_lam (Pasrint, 2);
+        | "%eq" -> Glob_lam ((Pintcomp Ceq), 2);
+        | "%noteq" -> Glob_lam ((Pintcomp Cne), 2);
+        | "%ltint" -> Glob_lam ((Pintcomp Clt), 2);
+        | "%leint" -> Glob_lam ((Pintcomp Cle), 2);
+        | "%gtint" -> Glob_lam ((Pintcomp Cgt), 2);
+        | "%geint" -> Glob_lam ((Pintcomp Cge), 2);
+        | "%incr" -> Glob_lam ((Poffsetref(1)), 1);
+        | "%decr" -> Glob_lam ((Poffsetref(-1)), 1);
+        | "%intoffloat" -> Glob_lam (Pintoffloat, 1);
+        | "%floatofint" -> Glob_lam (Pfloatofint, 1);
+        | "%negfloat" -> Glob_lam (Pnegfloat, 1);
+        | "%absfloat" -> Glob_lam (Pabsfloat, 1);
+        | "%addfloat" -> Glob_lam (Paddfloat, 2);
+        | "%subfloat" -> Glob_lam (Psubfloat, 2);
+        | "%mulfloat" -> Glob_lam (Pmulfloat, 2);
+        | "%divfloat" -> Glob_lam (Pdivfloat, 2);
+        | "%eqfloat" -> Glob_lam ((Pfloatcomp CFeq), 2);
+        | "%noteqfloat" -> Glob_lam ((Pfloatcomp CFneq), 2);
+        | "%ltfloat" -> Glob_lam ((Pfloatcomp CFlt), 2);
+        | "%lefloat" -> Glob_lam ((Pfloatcomp CFle), 2);
+        | "%gtfloat" -> Glob_lam ((Pfloatcomp CFgt), 2);
+        | "%gefloat" -> Glob_lam ((Pfloatcomp CFge), 2);
+        | "%string_length" -> Glob_lam (Pstringlength, 1);
+        | "%string_safe_get" -> Glob_lam (Pstringrefs, 2);
+        | "%string_safe_set" -> Glob_lam (Pbytessets, 3);
+        | "%string_unsafe_get" -> Glob_lam (Pstringrefu, 2);
+        | "%string_unsafe_set" -> Glob_lam (Pbytessetu, 3);
+        | "%bytes_length" -> Glob_lam (Pbyteslength, 1);
+        | "%bytes_safe_get" -> Glob_lam (Pbytesrefs, 2);
+        | "%bytes_safe_set" -> Glob_lam (Pbytessets, 3);
+        | "%bytes_unsafe_get" -> Glob_lam (Pbytesrefu, 2);
+        | "%bytes_unsafe_set" -> Glob_lam (Pbytessetu, 3);
+        | "%array_length" -> Glob_lam ((Parraylength gen_array_kind), 1);
+        | "%array_safe_get" -> Glob_lam ((Parrayrefs gen_array_kind), 2);
+        | "%array_safe_set" -> Glob_lam ((Parraysets gen_array_kind), 3);
+        | "%array_unsafe_get" -> Glob_lam ((Parrayrefu gen_array_kind), 2);
+        | "%array_unsafe_set" -> Glob_lam ((Parraysetu gen_array_kind), 3);
+        | "%obj_size" -> Glob_lam ((Parraylength gen_array_kind), 1);
+        | "%obj_field" -> Glob_lam ((Parrayrefu gen_array_kind), 2);
+        | "%obj_set_field" -> Glob_lam ((Parraysetu gen_array_kind), 3);
+        | "%floatarray_length" -> Glob_lam ((Parraylength Pfloatarray), 1);
+        | "%floatarray_safe_get" -> Glob_lam ((Parrayrefs Pfloatarray), 2);
+        | "%floatarray_safe_set" -> Glob_lam ((Parraysets Pfloatarray), 3);
+        | "%floatarray_unsafe_get" -> Glob_lam ((Parrayrefu Pfloatarray), 2);
+        | "%floatarray_unsafe_set" -> Glob_lam ((Parraysetu Pfloatarray), 3);
+        | "%obj_is_int" -> Glob_lam (Pisint, 1);
+        | "%nativeint_of_int" -> Glob_lam ((Pbintofint Pnativeint), 1);
+        | "%nativeint_to_int" -> Glob_lam ((Pintofbint Pnativeint), 1);
+        | "%nativeint_neg" -> Glob_lam ((Pnegbint Pnativeint), 1);
+        | "%nativeint_add" -> Glob_lam ((Paddbint Pnativeint), 2);
+        | "%nativeint_sub" -> Glob_lam ((Psubbint Pnativeint), 2);
+        | "%nativeint_mul" -> Glob_lam ((Pmulbint Pnativeint), 2);
+        | "%nativeint_div" ->
+            Glob_lam ((Pdivbint { size = Pnativeint; is_safe = Safe }), 2);
+        | "%nativeint_mod" ->
+            Glob_lam ((Pmodbint { size = Pnativeint; is_safe = Safe }), 2);
+        | "%nativeint_and" -> Glob_lam ((Pandbint Pnativeint), 2);
+        | "%nativeint_or" -> Glob_lam ( (Porbint Pnativeint), 2);
+        | "%nativeint_xor" -> Glob_lam ((Pxorbint Pnativeint), 2);
+        | "%nativeint_lsl" -> Glob_lam ((Plslbint Pnativeint), 2);
+        | "%nativeint_lsr" -> Glob_lam ((Plsrbint Pnativeint), 2);
+        | "%nativeint_asr" -> Glob_lam ((Pasrbint Pnativeint), 2);
+        | "%int32_of_int" -> Glob_lam ((Pbintofint Pint32), 1);
+        | "%int32_to_int" -> Glob_lam ((Pintofbint Pint32), 1);
+        | "%int32_neg" -> Glob_lam ((Pnegbint Pint32), 1);
+        | "%int32_add" -> Glob_lam ((Paddbint Pint32), 2);
+        | "%int32_sub" -> Glob_lam ((Psubbint Pint32), 2);
+        | "%int32_mul" -> Glob_lam ((Pmulbint Pint32), 2);
+        | "%int32_div" -> Glob_lam ((Pdivbint { size = Pint32; is_safe = Safe }), 2);
+        | "%int32_mod" -> Glob_lam ((Pmodbint { size = Pint32; is_safe = Safe }), 2);
+        | "%int32_and" -> Glob_lam ((Pandbint Pint32), 2);
+        | "%int32_or" -> Glob_lam ( (Porbint Pint32), 2);
+        | "%int32_xor" -> Glob_lam ((Pxorbint Pint32), 2);
+        | "%int32_lsl" -> Glob_lam ((Plslbint Pint32), 2);
+        | "%int32_lsr" -> Glob_lam ((Plsrbint Pint32), 2);
+        | "%int32_asr" -> Glob_lam ((Pasrbint Pint32), 2);
+        | "%int64_of_int" -> Glob_lam ((Pbintofint Pint64), 1);
+        | "%int64_to_int" -> Glob_lam ((Pintofbint Pint64), 1);
+        | "%int64_neg" -> Glob_lam ((Pnegbint Pint64), 1);
+        | "%int64_add" -> Glob_lam ((Paddbint Pint64), 2);
+        | "%int64_sub" -> Glob_lam ((Psubbint Pint64), 2);
+        | "%int64_mul" -> Glob_lam ((Pmulbint Pint64), 2);
+        | "%int64_div" -> Glob_lam ((Pdivbint { size = Pint64; is_safe = Safe }), 2);
+        | "%int64_mod" -> Glob_lam ((Pmodbint { size = Pint64; is_safe = Safe }), 2);
+        | "%int64_and" -> Glob_lam ((Pandbint Pint64), 2);
+        | "%int64_or" -> Glob_lam ( (Porbint Pint64), 2);
+        | "%int64_xor" -> Glob_lam ((Pxorbint Pint64), 2);
+        | "%int64_lsl" -> Glob_lam ((Plslbint Pint64), 2);
+        | "%int64_lsr" -> Glob_lam ((Plsrbint Pint64), 2);
+        | "%int64_asr" -> Glob_lam ((Pasrbint Pint64), 2);
+        | "%nativeint_of_int32" -> Glob_lam ((Pcvtbint(Pint32, Pnativeint)), 1);
+        | "%nativeint_to_int32" -> Glob_lam ((Pcvtbint(Pnativeint, Pint32)), 1);
+        | "%int64_of_int32" -> Glob_lam ((Pcvtbint(Pint32, Pint64)), 1);
+        | "%int64_to_int32" -> Glob_lam ((Pcvtbint(Pint64, Pint32)), 1);
+        | "%int64_of_nativeint" -> Glob_lam ((Pcvtbint(Pnativeint, Pint64)), 1);
+        | "%int64_to_nativeint" -> Glob_lam ((Pcvtbint(Pint64, Pnativeint)), 1);
+        | "%caml_ba_ref_1" ->
+            Glob_lam
+              ((Pbigarrayref(false, 1, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               2);
+        | "%caml_ba_ref_2" ->
+            Glob_lam
+              ((Pbigarrayref(false, 2, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               3);
+        | "%caml_ba_ref_3" ->
+            Glob_lam
+              ((Pbigarrayref(false, 3, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               4);
+        | "%caml_ba_set_1" ->
+            Glob_lam
+              ((Pbigarrayset(false, 1, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               3);
+        | "%caml_ba_set_2" ->
+            Glob_lam
+              ((Pbigarrayset(false, 2, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               4);
+        | "%caml_ba_set_3" ->
+            Glob_lam
+              ((Pbigarrayset(false, 3, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               5);
+        | "%caml_ba_unsafe_ref_1" ->
+            Glob_lam
+              ((Pbigarrayref(true, 1, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               2);
+        | "%caml_ba_unsafe_ref_2" ->
+            Glob_lam
+              ((Pbigarrayref(true, 2, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               3);
+        | "%caml_ba_unsafe_ref_3" ->
+            Glob_lam
+              ((Pbigarrayref(true, 3, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               4);
+        | "%caml_ba_unsafe_set_1" ->
+            Glob_lam
+              ((Pbigarrayset(true, 1, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               3);
+        | "%caml_ba_unsafe_set_2" ->
+            Glob_lam
+              ((Pbigarrayset(true, 2, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               4);
+        | "%caml_ba_unsafe_set_3" ->
+            Glob_lam
+              ((Pbigarrayset(true, 3, Pbigarray_unknown, Pbigarray_unknown_layout)),
+               5);
+        | "%caml_ba_dim_1" -> Glob_lam ((Pbigarraydim(1)), 1);
+        | "%caml_ba_dim_2" -> Glob_lam ((Pbigarraydim(2)), 1);
+        | "%caml_ba_dim_3" -> Glob_lam ((Pbigarraydim(3)), 1);
+        | "%caml_string_get16" -> Glob_lam ((Pstring_load_16(false)), 2);
+        | "%caml_string_get16u" -> Glob_lam ((Pstring_load_16(true)), 2);
+        | "%caml_string_get32" -> Glob_lam ((Pstring_load_32(false)), 2);
+        | "%caml_string_get32u" -> Glob_lam ((Pstring_load_32(true)), 2);
+        | "%caml_string_get64" -> Glob_lam ((Pstring_load_64(false)), 2);
+        | "%caml_string_get64u" -> Glob_lam ((Pstring_load_64(true)), 2);
+        | "%caml_string_set16" -> Glob_lam ((Pbytes_set_16(false)), 3);
+        | "%caml_string_set16u" -> Glob_lam ((Pbytes_set_16(true)), 3);
+        | "%caml_string_set32" -> Glob_lam ((Pbytes_set_32(false)), 3);
+        | "%caml_string_set32u" -> Glob_lam ((Pbytes_set_32(true)), 3);
+        | "%caml_string_set64" -> Glob_lam ((Pbytes_set_64(false)), 3);
+        | "%caml_string_set64u" -> Glob_lam ((Pbytes_set_64(true)), 3);
+        | "%caml_bytes_get16" -> Glob_lam ((Pbytes_load_16(false)), 2);
+        | "%caml_bytes_get16u" -> Glob_lam ((Pbytes_load_16(true)), 2);
+        | "%caml_bytes_get32" -> Glob_lam ((Pbytes_load_32(false)), 2);
+        | "%caml_bytes_get32u" -> Glob_lam ((Pbytes_load_32(true)), 2);
+        | "%caml_bytes_get64" -> Glob_lam ((Pbytes_load_64(false)), 2);
+        | "%caml_bytes_get64u" -> Glob_lam ((Pbytes_load_64(true)), 2);
+        | "%caml_bytes_set16" -> Glob_lam ((Pbytes_set_16(false)), 3);
+        | "%caml_bytes_set16u" -> Glob_lam ((Pbytes_set_16(true)), 3);
+        | "%caml_bytes_set32" -> Glob_lam ((Pbytes_set_32(false)), 3);
+        | "%caml_bytes_set32u" -> Glob_lam ((Pbytes_set_32(true)), 3);
+        | "%caml_bytes_set64" -> Glob_lam ((Pbytes_set_64(false)), 3);
+        | "%caml_bytes_set64u" -> Glob_lam ((Pbytes_set_64(true)), 3);
+        | "%caml_bigstring_get16" -> Glob_lam ((Pbigstring_load_16(false)), 2);
+        | "%caml_bigstring_get16u" -> Glob_lam ((Pbigstring_load_16(true)), 2);
+        | "%caml_bigstring_get32" -> Glob_lam ((Pbigstring_load_32(false)), 2);
+        | "%caml_bigstring_get32u" -> Glob_lam ((Pbigstring_load_32(true)), 2);
+        | "%caml_bigstring_get64" -> Glob_lam ((Pbigstring_load_64(false)), 2);
+        | "%caml_bigstring_get64u" -> Glob_lam ((Pbigstring_load_64(true)), 2);
+        | "%caml_bigstring_set16" -> Glob_lam ((Pbigstring_set_16(false)), 3);
+        | "%caml_bigstring_set16u" -> Glob_lam ((Pbigstring_set_16(true)), 3);
+        | "%caml_bigstring_set32" -> Glob_lam ((Pbigstring_set_32(false)), 3);
+        | "%caml_bigstring_set32u" -> Glob_lam ((Pbigstring_set_32(true)), 3);
+        | "%caml_bigstring_set64" -> Glob_lam ((Pbigstring_set_64(false)), 3);
+        | "%caml_bigstring_set64u" -> Glob_lam ((Pbigstring_set_64(true)), 3);
+        | "%bswap16" -> Glob_lam (Pbswap16, 1);
+        | "%bswap_int32" -> Glob_lam ((Pbbswap(Pint32)), 1);
+        | "%bswap_int64" -> Glob_lam ((Pbbswap(Pint64)), 1);
+        | "%bswap_native" -> Glob_lam ((Pbbswap(Pnativeint)), 1);
+        | "%int_as_pointer" -> Glob_lam (Pint_as_pointer, 1);
+        | "%opaque" -> Glob_lam (Popaque, 1);
+
+        | s when s.[0] = '%' ->
           failwith ("unimplemented primitive " ^ p.prim_name);
-       | _ -> Glob_prim p
+
+        | _ -> Glob_prim p
     )
   | _ -> failwith "unexpected kind of value"
 
