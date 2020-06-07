@@ -312,9 +312,7 @@ let lookup env v =
   match descr.val_kind with
   | Val_reg -> Glob_val (transl_value_path (Location.none) env path)
   | Val_prim(p) -> (
-     (* if you need more primitives, find translprim.ml somewhere in ~/.opam
-      * and search for your %primitive to see how it's defined
-      *)
+     (* see docs/primitives.md on how to add more primitives *)
      match p.prim_name with
        | "%equal" ->
           Glob_prim (Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true)
