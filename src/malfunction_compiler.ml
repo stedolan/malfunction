@@ -288,6 +288,7 @@ end
 type global_value =
   | Glob_val of lambda
   | Glob_prim of Primitive.description
+  | Glob_lam of Lambda.primitive * int
 
 let lookup env v =
   let open Types in
@@ -310,19 +311,26 @@ let lookup env v =
         failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
   match descr.val_kind with
   | Val_reg -> Glob_val (transl_value_path (Location.none) env path)
-  | Val_prim(p) ->
-     let p = match p.prim_name with
+  | Val_prim(p) -> (
+     (* if you need more primitives, find translprim.ml somewhere in ~/.opam
+      * and search for your %primitive to see how it's defined
+      *)
+     match p.prim_name with
        | "%equal" ->
-          Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true
+          Glob_prim (Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true)
        | "%compare" ->
-          Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true
+          Glob_prim (Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true)
+       | "%string_length" ->
+          Glob_lam (Pstringlength, 1);
+       | "%string_safe_get" ->
+          Glob_lam (Pstringrefs, 2);
+       | "%string_unsafe_get" ->
+          Glob_lam (Pstringrefu, 2);
        | s when s.[0] = '%' ->
           failwith ("unimplemented primitive " ^ p.prim_name);
-       | _ ->
-          p in
-     Glob_prim p
+       | _ -> Glob_prim p
+    )
   | _ -> failwith "unexpected kind of value"
-
 
 let builtin env path args =
   let p = match path with
@@ -343,6 +351,9 @@ let builtin env path args =
   | Glob_prim p ->
      assert (p.prim_arity = List.length args);
      lprim (Pccall p) args
+  | Glob_lam (p, arity) ->
+     assert (arity = List.length args);
+     lprim p args
 
 let global_to_lambda = function
   | Glob_val v -> v
@@ -353,6 +364,14 @@ let global_to_lambda = function
        else fresh "prim" :: make_params (n-1) in
      let params = make_params p.prim_arity in
      let body = lprim (Pccall p) (List.map (fun x -> Lvar x) params) in
+     lfunction params body
+  | Glob_lam (p, arity) ->
+     (* Eta-expand this primitive. See translprim.ml. *)
+     let rec make_params n =
+       if n <= 0 then []
+       else fresh "prim" :: make_params (n-1) in
+     let params = make_params arity in
+     let body = lprim p (List.map (fun x -> Lvar x) params) in
      lfunction params body
 
 let rec to_lambda env = function
@@ -375,6 +394,8 @@ let rec to_lambda env = function
         (match lookup env v with
         | Glob_prim p when p.prim_arity = List.length args ->
            lprim (Pccall p) (List.map (to_lambda env) args)
+        | Glob_lam (p, arity) when arity = List.length args ->
+           lprim p (List.map (to_lambda env) args)
         | g ->
            ap_func (global_to_lambda g))
      | fn ->
