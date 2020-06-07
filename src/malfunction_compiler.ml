@@ -290,6 +290,9 @@ type global_value =
   | Glob_prim of Primitive.description
   | Glob_lam of Lambda.primitive * int
 
+let gen_array_kind =
+  if Config.flat_float_array then Pgenarray else Paddrarray
+
 let lookup env v =
   let open Types in
   let open Primitive in
@@ -324,6 +327,10 @@ let lookup env v =
           Glob_lam (Pstringrefs, 2);
        | "%string_unsafe_get" ->
           Glob_lam (Pstringrefu, 2);
+       | "%array_unsafe_get" ->
+          Glob_lam ((Parrayrefu gen_array_kind), 2);
+       | "%array_unsafe_set" ->
+          Glob_lam ((Parraysetu gen_array_kind), 3);
        | s when s.[0] = '%' ->
           failwith ("unimplemented primitive " ^ p.prim_name);
        | _ -> Glob_prim p
