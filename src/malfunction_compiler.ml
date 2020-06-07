@@ -331,6 +331,8 @@ let lookup env v =
           Glob_lam ((Parrayrefu gen_array_kind), 2);
        | "%array_unsafe_set" ->
           Glob_lam ((Parraysetu gen_array_kind), 3);
+       | "%field0" -> Glob_lam ((Pfield 0), 1);
+       | "%setfield0" -> Glob_lam ((Psetfield(0, Pointer, Assignment)), 2);
        | s when s.[0] = '%' ->
           failwith ("unimplemented primitive " ^ p.prim_name);
        | _ -> Glob_prim p
