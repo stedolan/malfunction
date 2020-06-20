@@ -28,7 +28,7 @@ instance, there are no reserved words: all user-defined identifiers
 must be prefixed with `$`.
 
 Files are compiled as OCaml modules, and may import values from OCaml
-(e.g. `Pervasives.print_string` in the example above) and export
+(e.g. `Stdlib.print_string` in the example above) and export
 values to OCaml (using the `export` form). Modules written in
 malfunction may be combined with an `mli` file written in OCaml.
 
