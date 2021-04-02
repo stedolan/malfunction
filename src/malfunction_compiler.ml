@@ -10,7 +10,7 @@ let rec lrmap f = function
 | [] -> []
 | (x :: xs) -> let r = f x in r :: lrmap f xs
 
-let lprim p args = Lprim (p, args, Location.none)
+let lprim p args = Lprim (p, args, loc_none)
 let lbind n exp body =
   let id = fresh n in
   Llet (Strict, Pgenval, id, exp, body (Lvar id))
@@ -204,6 +204,8 @@ module IntSwitch = struct
   (* unfortunately, this is not exposed from matching.ml, so copy-paste *)
   module Switcher = Switch.Make (struct
     type primitive = Lambda.primitive
+    type loc = Location.t
+    let _unused : loc option = None
 
     let eqint = Pintcomp Ceq
     let neint = pintcomp_cne
@@ -299,17 +301,17 @@ let lookup env v =
   let v = stdlib_compat_hack v in
   let (path, descr) =
     try
-      Env.lookup_value (* ~loc:(parse_loc loc) *) v env
+      Env.lookup_value ~loc:Location.none (*parse_loc loc*) v env
     with Not_found ->
       let rec try_stdlib = let open Longident in function
         | Lident s -> Ldot (Lident "Stdlib", s)
         | Ldot (id, s) -> Ldot (try_stdlib id, s)
         | Lapply _ as l -> l in
-      try Env.lookup_value (try_stdlib v) env
+      try Env.lookup_value ~loc:Location.none (try_stdlib v) env
       with Not_found ->
         failwith ("global not found: " ^ String.concat "." (Longident.flatten v)) in
   match descr.val_kind with
-  | Val_reg -> Glob_val (transl_value_path (Location.none) env path)
+  | Val_reg -> Glob_val (transl_value_path loc_none env path)
   | Val_prim(p) ->
      let p = match p.prim_name with
        | "%equal" ->
@@ -332,14 +334,7 @@ let builtin env path args =
     | _ -> assert false in
   match lookup env p with
   | Glob_val v ->
-     Lapply {
-       ap_func = v;
-       ap_args = args;
-       ap_loc = Location.none; (* FIXME *)
-       ap_should_be_tailcall = false;
-       ap_inlined = Default_inline;
-       ap_specialised = Default_specialise
-     }
+     lapply v args
   | Glob_prim p ->
      assert (p.prim_arity = List.length args);
      lprim (Pccall p) args
@@ -361,15 +356,7 @@ let rec to_lambda env = function
   | Mlambda (params, e) ->
      lfunction params (to_lambda env e)
   | Mapply (fn, args) ->
-     let ap_func fn =
-       Lapply {
-         ap_func = fn;
-         ap_args = List.map (to_lambda env) args;
-         ap_loc = Location.none; (* FIXME *)
-         ap_should_be_tailcall = false;
-         ap_inlined = Default_inline;
-         ap_specialised = Default_specialise;
-       } in
+     let ap_func fn = lapply fn (List.map (to_lambda env) args) in
      (match fn with
      | Mglobal v ->
         (match lookup env v with
@@ -507,7 +494,7 @@ let rec to_lambda env = function
      | `Sub -> lprim Psubfloat [e1; e2]
      | `Mul -> lprim Pmulfloat [e1; e2]
      | `Div -> lprim Pdivfloat [e1; e2]
-     | `Mod -> builtin env ["Pervasives"; "mod_float"] [e1; e2]
+     | `Mod -> builtin env [stdlib_module_name; "mod_float"] [e1; e2]
      | #binary_comparison as op ->
         let cmp = cmp_to_float_comparison op in
         lprim (Pfloatcomp cmp) [e1; e2]
@@ -611,7 +598,7 @@ let rec to_lambda env = function
      let fn = lfunction [fresh "param"] (to_lambda env e) in
      lprim (Pmakeblock (Config.lazy_tag, Mutable, None)) [fn]
   | Mforce e ->
-     Matching.inline_lazy_force (to_lambda env e) Location.none
+     Matching.inline_lazy_force (to_lambda env e) loc_none
 
 and bindings_to_lambda env bindings body =
   List.fold_right (fun b rest -> match b with
@@ -627,7 +614,7 @@ and bindings_to_lambda env bindings body =
 let setup_options options =
   Clflags.native_code := true;
   Clflags.flambda_invariant_checks := true;
-  Clflags.nopervasives := true;
+  Clflags.nopervasives := false;
   Clflags.dump_lambda := false;
   Clflags.dump_cmm := false;
   Clflags.keep_asm_file := false;
@@ -673,7 +660,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
       bindings_to_lambda env bindings
         (lprim (Pmakeblock (0, Immutable, None)) (List.map (to_lambda env) exports))
     else begin
-      let loc = Location.none (* FIXME *) in
+      let loc = loc_none (* FIXME *) in
       let num_exports = List.length exports in
       (* Compile all of the bindings, store at positions num_exports + i,
          then compile the exports. See Translmod.transl_store_gen. *)
@@ -750,7 +737,7 @@ let delete_temps { objfile; cmxfile; cmifile } =
 type options = [`Verbose | `Shared] list
 
 
-let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (size, code) =
+let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lmod =
   let ppf = Format.std_formatter in
   let outfiles = ref {
     cmxfile = prefixname ^ ".cmx";
@@ -791,30 +778,7 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id (s
     (* FIXME: Translprim.get_used_primitives (see translmod.ml)? *)
     (* FIXME: Translmod.required_globals? Env.reset_required_globals? Should this be in to_lambda? *)
     let required_globals = Ident.Set.of_list (Env.get_required_globals ()) in
-    if Config.flambda then begin
-      code
-      |> (fun lam ->
-        with_source_provenance filename (with_ppf_dump ppf flambda_middle_end)
-          ~prefixname
-          ~backend
-          ~size
-          ~filename
-          ~module_ident:module_id
-          ~module_initializer:lam)
-      |> with_ppf_dump ppf (
-          with_source_provenance filename (Asmgen.compile_implementation_flambda ?toplevel:None)
-          prefixname
-          ~required_globals
-          ~backend)
-    end else begin
-      (* FIXME: main_module_block_size is wrong *)
-      code
-      |> (fun code -> Lambda.{ module_ident = module_id; required_globals;
-                               code; main_module_block_size = size })
-      |> with_ppf_dump ppf
-         (with_source_provenance filename (asmgen_compile_implementation_clambda ~backend)
-           prefixname);
-    end;
+    compile_implementation ~prefixname ~filename ~module_id ~backend ~required_globals ~ppf lmod;
     Compilenv.save_unit_info !outfiles.cmxfile;
     Warnings.check_fatal ();
     !outfiles
