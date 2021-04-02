@@ -823,20 +823,31 @@ let compile_and_load ?(options : options =[]) e =
   (* more than a little horrible *)
   Unix.unlink tmpdir;
   Unix.mkdir tmpdir 0o700;
+  let old_cwd = Sys.getcwd () in
+  Sys.chdir tmpdir;
   incr code_id;
   let modname = "Malfunction_Code_" ^ string_of_int (!code_id) in
-  let prefix = tmpdir ^ Filename.dir_sep ^ String.uncapitalize_ascii modname in
+  let modname_uncap = String.uncapitalize_ascii modname in
   let options = `Shared :: options in
-  let tmpfiles = compile_module ~options ~filename:"code" (Mmod ([], [e])) in
-  let cmxs = prefix ^ ".cmxs" in
-  with_ppf_dump Format.err_formatter Asmlink.link_shared [tmpfiles.cmxfile] cmxs;
-  delete_temps tmpfiles;
+  let tmpfiles = compile_module ~options ~filename:modname_uncap (Mmod ([], [e])) in
+  setup_options options;  (* rescan load path *)
+  begin try
+    with_ppf_dump Format.err_formatter Asmlink.link_shared [tmpfiles.cmxfile] (modname_uncap ^ ".cmxs")
+  with
+  | Asmlink.Error e ->
+     let msg = Format.asprintf "Asmlink error: %a" Asmlink.report_error e in
+     failwith msg
+  end;
+  let cmxs = tmpdir ^ Filename.dir_sep ^ modname_uncap ^ ".cmxs" in
   (match ndl_run_toplevel cmxs modname with
   | Ok _ -> ()
   | Error s -> failwith ("loading failed: " ^ s));
+  let res = Obj.field (ndl_loadsym (Compilenv.symbol_for_global (Ident.create_persistent modname))) 0 in
+  delete_temps tmpfiles;
   Misc.remove_file cmxs;
+  Sys.chdir old_cwd;
   Unix.rmdir tmpdir;
-  Obj.field (ndl_loadsym (Compilenv.symbol_for_global (Ident.create_persistent modname))) 0
+  res
 
 
 
