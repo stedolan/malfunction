@@ -7,6 +7,7 @@
 
 (executable
  (name malfunction_main)
+ (modes native)
  (libraries malfunction)
  (modules malfunction_main)
  (public_name malfunction))

@@ -1,5 +1,6 @@
 (executable
  (name test)
+ (modes native)
  (libraries malfunction omd)
  (modules test))
 
