@@ -637,8 +637,12 @@ let setup_options options =
   | `Verbose ->
      Clflags.dump_lambda := true;
      Clflags.dump_cmm := true;
+     (*
+       If anyone wants to keep these, there should probably be another option for where to put them.
+       (rather than leaving stale temporary directories around)
      Clflags.keep_asm_file := true;
      Clflags.inlining_report := true
+      *)
   | `Shared ->
      Clflags.shared := true);
 
