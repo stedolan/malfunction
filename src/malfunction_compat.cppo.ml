@@ -39,26 +39,21 @@ let lfunction params body =
 #if OCAML_VERSION >= (4, 08, 0)
   let params = List.map (fun x -> x, Pgenval) params in
 #endif
-  Lfunction {
-     kind = Curried;
-     params;
-     body;
-     loc = loc_none;
-     attr = {
+  lfunction 
+    ~kind:Curried
+     ~params
+     ~body
+     ~loc:loc_none
+     ~attr:{
        inline = Default_inline;
        specialise = Default_specialise;
        is_a_functor = false;
-#if OCAML_VERSION >= (4, 05, 0)
+       tmc_candidate = false;
+       poll = Default_poll;
        stub = false;
-#endif
-#if OCAML_VERSION >= (4, 08, 0)
        local = Default_local;
-#endif
-     };
-#if OCAML_VERSION >= (4, 08, 0)
-     return = Pgenval;
-#endif
-   }
+     }
+     ~return:Pgenval
 
 let lapply fn args =
   Lapply {
@@ -241,7 +236,13 @@ let compile_implementation
     if Config.flambda then Flambda_middle_end.lambda_to_clambda
     else Closure_middle_end.lambda_to_clambda
   in
+  let _ = filename in 
   Asmgen.compile_implementation
-    ?toplevel:None ~backend ~filename ~prefixname ~middle_end ~ppf_dump:ppf
+    ?toplevel:None 
+    ~backend 
+   (* ~filename *)
+    ~prefixname 
+    ~middle_end 
+    ~ppf_dump:ppf
     program
 #endif

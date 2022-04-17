@@ -157,18 +157,18 @@ let load_testcases_markdown filename =
   let dummy_loc =
     let l = Lexing.{pos_fname = filename; pos_lnum = 0; pos_cnum = 0; pos_bol = 0} in
     l,l in
-  let open Omd_representation in
+  let open Omd in
   let testcases = ref [] in
-  let _ = Omd.of_string contents |> visit @@ function
-    | Code_block (("test" | " test"), s) ->
+  let _ = Omd.of_string contents |> List.iter @@ function
+    | Code_block (_, ("test" | " test"), s) ->
        let open Str in
        let (test, expect) = match split (regexp "\n=>") s with
          | [t; e] -> (parse_string t, parse_string e)
          | _ -> failwith @@ "Cannot parse testcase " ^ s in
        testcases := (`Test, dummy_loc, test, expect) :: !testcases;
-       None
-    | _ ->
-       None in
+       ()
+    | _ -> ()
+  in
   List.rev !testcases
 
 let run_file parser filename =

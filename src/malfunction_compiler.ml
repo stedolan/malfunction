@@ -207,6 +207,9 @@ module IntSwitch = struct
     type loc = Location.t
     let _unused : loc option = None
 
+    let make_is_nonzero a = a
+    let arg_as_test a = a
+
     let eqint = Pintcomp Ceq
     let neint = pintcomp_cne
     let leint = Pintcomp Cle
@@ -215,6 +218,8 @@ module IntSwitch = struct
     let gtint = Pintcomp Cgt
 
     type act = Lambda.lambda
+    type arg = act
+    type test = act
 
     let make_prim p args = lprim p args
     let make_offset arg n = match n with
@@ -593,7 +598,7 @@ let rec to_lambda env = function
   | Mblock (tag, vals) ->
      lprim (Pmakeblock (tag, Immutable, None)) (List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
-      lprim (Pfield(idx)) [to_lambda env e]
+      lprim (Pfield(idx, Pointer, Mutable)) [to_lambda env e]
   | Mlazy e ->
      let fn = lfunction [fresh "param"] (to_lambda env e) in
      lprim (Pmakeblock (Config.lazy_tag, Mutable, None)) [fn]
@@ -630,7 +635,7 @@ let setup_options options =
   (* FIXME: should we use classic_arguments for non-flambda builds? *)
 
   (* Hack: disable the "no cmx" warning for zarith *)
-  Warnings.parse_options false "-58";
+  let _ : Warnings.alert option = Warnings.parse_options false "-58" in
   assert (not (Warnings.is_active (Warnings.No_cmx_file "asdf")));
 
   (options |> List.iter @@ function
@@ -673,7 +678,8 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
         Lprim (Psetfield (pos, Pointer, root_initialization),
                [Lprim (Pgetglobal module_id, [], loc); e], loc) in
       let mod_load pos =
-        Lprim (Pfield pos,
+        Lprim (
+          Pfield (pos, Pointer, Mutable),
                [Lprim (Pgetglobal module_id, [], loc)], loc) in
       let transl_exports subst =
         let exps = List.mapi (fun i e -> mod_store i (Subst.apply subst (to_lambda env e))) exports in
