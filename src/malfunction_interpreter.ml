@@ -145,7 +145,7 @@ let rec interpret locals env : t -> value = function
           | `Bigint -> ()
           | (`Int|`Int32|`Int64) as ty ->
              let w = bitwidth ty in
-             if c < 0 || c > w then
+             if c < 0 || c >= w then
                fail "invalid shift count %d" c in
         truncate ty Z.(match op with
         | `Lsl -> shift_left n c

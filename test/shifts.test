@@ -24,8 +24,7 @@
 (test-undefined (>> 1 113455345))
 (test-undefined (a>> 1 113455345))
 
-(test (<<.i32 1.i32 32) 0.i32)
-(test-undefined (<<.i32 1.i32 33))
+(test (<<.i32 1.i32 31) -2147483648.i32)
+(test-undefined (<<.i32 1.i32 32))
 (test (>>.i32 (neg.i32 1.i32) 31) 1.i32)
-(test (>>.i32 (neg.i32 1.i32) 32) 0.i32)
-(test-undefined (>>.i32 (neg.i32 1.i32) 33))
+(test-undefined (>>.i32 (neg.i32 1.i32) 32))

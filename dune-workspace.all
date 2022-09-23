@@ -26,4 +26,5 @@
 (context (opam (switch 4.13.1) ))
 (context (opam (switch 4.13.1+flambda)))
 (context (opam (switch 4.14.0) ))
+(context (opam (switch 4.14.0+32bit) ))
 (context (opam (switch 4.14.0+flambda)))
