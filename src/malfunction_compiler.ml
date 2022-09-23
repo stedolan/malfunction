@@ -214,7 +214,20 @@ module IntSwitch = struct
     let geint = Pintcomp Cge
     let gtint = Pintcomp Cgt
 
+    type arg = Lambda.lambda
+    type test = Lambda.lambda
     type act = Lambda.lambda
+
+    let make_is_nonzero arg =
+      (* https://github.com/ocaml/ocaml/pull/10681 *)
+      Lprim (pintcomp_cne,
+             [arg; Lconst (Const_base (Const_int 0))],
+             loc_none)
+
+    let arg_as_test (arg : arg) : test = arg
+
+    (* these are unused on some OCaml versions *)
+    let _ = make_is_nonzero, arg_as_test
 
     let make_prim p args = lprim p args
     let make_offset arg n = match n with
@@ -630,7 +643,7 @@ let setup_options options =
   (* FIXME: should we use classic_arguments for non-flambda builds? *)
 
   (* Hack: disable the "no cmx" warning for zarith *)
-  Warnings.parse_options false "-58";
+  let _ = Warnings.parse_options false "-58" in
   assert (not (Warnings.is_active (Warnings.No_cmx_file "asdf")));
 
   (options |> List.iter @@ function
