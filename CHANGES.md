@@ -1,3 +1,9 @@
+v0.4 (23rd September 2022)
+--------------------------
+
+Support for OCaml 4.09 to 4.14
+Recursive lazy bindings now supported
+
 v0.3 (24th April 2019)
 ---------------------
 
