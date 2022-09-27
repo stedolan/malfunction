@@ -12,8 +12,8 @@ build: [
 depends: [
   "ocaml" {>= "4.04" & < "5.0.0"}
   "ocamlfind"
-  "dune"
-  "cppo" {build}
+  "dune" {>= "1.2"}
+  "cppo" {build & >= "1.1.0"}
   "omd" {with-test & < "2.0.0~"}
   "craml" {with-test}
   "zarith"

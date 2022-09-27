@@ -1,3 +1,7 @@
+v0.4.1 (27th September 2022)
+----------------------------
+Bugfix for integer shift counts
+
 v0.4 (23rd September 2022)
 --------------------------
 
