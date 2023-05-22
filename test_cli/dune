@@ -1,7 +1,9 @@
+(rule
+ (targets test.log test.expect)
+ (deps test.sh)
+ (action (run ./test.sh)))
+
 (alias
  (name runtest)
  (deps (source_tree .) (package malfunction))
- (action
-  (progn
-   (run %{bin:craml} test.t)
-   (diff? test.t test.t.corrected))))
+ (action (diff test.expect test.log)))
