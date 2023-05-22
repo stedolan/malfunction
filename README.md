@@ -38,7 +38,7 @@ that their output won't go wrong, but don't need to explain
 their reasoning.
 
 For more, read the [spec](./docs/spec.md), or the
-[abstract submitted to the ML Workshop](http://www.cl.cam.ac.uk/~sd601/papers/malfunction.pdf),
+[abstract submitted to the ML Workshop](https://stedolan.net/talks/2016/malfunction/malfunction.pdf),
 or [some examples](./docs)
 
 There's also an
