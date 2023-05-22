@@ -609,7 +609,7 @@ let rec to_lambda env = function
   | Mblock (tag, vals) ->
      lprim (Pmakeblock (tag, Immutable, None)) (List.map (to_lambda env) vals)
   | Mfield (idx, e) ->
-      lprim (Pfield(idx)) [to_lambda env e]
+      lprim (pfield idx) [to_lambda env e]
   | Mlazy e ->
      let fn = lfunction [fresh "param"] (to_lambda env e) in
      lprim (Pmakeblock (Config.lazy_tag, Mutable, None)) [fn]
@@ -689,7 +689,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
         Lprim (Psetfield (pos, Pointer, Root_initialization),
                [Lprim (Pgetglobal module_id, [], loc); e], loc) in
       let mod_load pos =
-        Lprim (Pfield pos,
+        Lprim (pfield pos,
                [Lprim (Pgetglobal module_id, [], loc)], loc) in
       let transl_exports subst =
         let exps = List.mapi (fun i e -> mod_store i (Subst.apply subst (to_lambda env e))) exports in

@@ -56,6 +56,13 @@ let lapply fn args =
     ap_specialised = Default_specialise
   }
 
+let pfield ix =
+#if OCAML_VERSION < (5, 0, 0)
+  Pfield ix
+#else
+  Pfield (ix, Pointer, Mutable)
+#endif
+
 module Subst : sig
   type t
   val empty : t
