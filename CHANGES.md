@@ -1,3 +1,9 @@
+v0.5 (22nd May 2023)
+--------------------
+
+Support for OCaml 5.0.0
+Dropped support for OCaml < 4.08
+
 v0.4 (23rd September 2022)
 --------------------------
 
