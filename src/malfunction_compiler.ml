@@ -208,7 +208,7 @@ module IntSwitch = struct
     let _unused : loc option = None
 
     let eqint = Pintcomp Ceq
-    let neint = pintcomp_cne
+    let neint = Pintcomp Cne
     let leint = Pintcomp Cle
     let ltint = Pintcomp Clt
     let geint = Pintcomp Cge
@@ -220,7 +220,7 @@ module IntSwitch = struct
 
     let make_is_nonzero arg =
       (* https://github.com/ocaml/ocaml/pull/10681 *)
-      Lprim (pintcomp_cne,
+      Lprim (Pintcomp Cne,
              [arg; Lconst (Const_base (Const_int 0))],
              loc_none)
 
@@ -254,7 +254,7 @@ module IntSwitch = struct
         {sw_numconsts = Array.length cases ; sw_consts = !l ;
          sw_numblocks = 0 ; sw_blocks =  []  ;
          sw_failaction = None}
-    let make_switch = make_switch_loc make_switch
+    let make_switch _loc = make_switch
     let make_catch d =
       match d with
       | Lstaticraise (i, []) -> i, (fun e -> e)
@@ -297,7 +297,7 @@ module IntSwitch = struct
         act_store_shared = (fun _ -> failwith "store_shared unimplemented") } in
     let cases = Array.of_list cases in
     let (low, _, _) = cases.(0) and (_, high, _) = cases.(Array.length cases - 1) in
-    with_loc Switcher.zyva Location.none (low, high) scr cases store
+    Switcher.zyva Location.none (low, high) scr cases store
 end
 
 type global_value =
@@ -307,11 +307,6 @@ type global_value =
 let lookup env v =
   let open Types in
   let open Primitive in
-  let rec stdlib_compat_hack : Longident.t -> Longident.t = function
-    | Lident "Stdlib" -> Lident (Malfunction_compat.stdlib_module_name)
-    | Ldot (id, s) -> Ldot (stdlib_compat_hack id, s)
-    | l -> l in
-  let v = stdlib_compat_hack v in
   let (path, descr) =
     try
       Env.lookup_value ~loc:Location.none (*parse_loc loc*) v env
@@ -507,8 +502,16 @@ let rec to_lambda env = function
      | `Sub -> lprim Psubfloat [e1; e2]
      | `Mul -> lprim Pmulfloat [e1; e2]
      | `Div -> lprim Pdivfloat [e1; e2]
-     | `Mod -> builtin env [stdlib_module_name; "mod_float"] [e1; e2]
+     | `Mod -> builtin env ["Stdlib"; "mod_float"] [e1; e2]
      | #binary_comparison as op ->
+        let cmp_to_float_comparison op = 
+          match op with
+          | `Lt -> CFlt
+          | `Gt -> CFgt
+          | `Lte -> CFle
+          | `Gte -> CFge
+          | `Eq -> CFeq
+        in
         let cmp = cmp_to_float_comparison op in
         lprim (Pfloatcomp cmp) [e1; e2]
      end
@@ -683,7 +686,7 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
          then compile the exports. See Translmod.transl_store_gen. *)
       let module_length = ref (-1) in
       let mod_store pos e =
-        Lprim (Psetfield (pos, Pointer, root_initialization),
+        Lprim (Psetfield (pos, Pointer, Root_initialization),
                [Lprim (Pgetglobal module_id, [], loc); e], loc) in
       let mod_load pos =
         Lprim (Pfield pos,
@@ -765,9 +768,8 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lm
   try
     let cmi = module_name ^ ".cmi" in
     Env.set_unit_name module_name;
-    with_source_provenance filename (Compilenv.reset
-      ?packname:!Clflags.for_package module_name);
-    ignore (match load_path_find cmi with
+    Compilenv.reset ?packname:!Clflags.for_package module_name;
+    ignore (match Load_path.find_uncap cmi with
         | file -> Env.read_signature module_name file
         | exception Not_found ->
            let chop_ext =
@@ -849,7 +851,7 @@ let compile_and_load ?(options : options =[]) e =
   let tmpfiles = compile_module ~options ~filename:modname_uncap (Mmod ([], [e])) in
   setup_options options;  (* rescan load path *)
   begin try
-    with_ppf_dump Format.err_formatter Asmlink.link_shared [tmpfiles.cmxfile] (modname_uncap ^ ".cmxs")
+    Asmlink.link_shared ~ppf_dump:Format.err_formatter [tmpfiles.cmxfile] (modname_uncap ^ ".cmxs")
   with
   | Asmlink.Error e ->
      let msg = Format.asprintf "Asmlink error: %a" Asmlink.report_error e in

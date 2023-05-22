@@ -26,16 +26,14 @@ and reify_block n xs =
   Array.iteri (Obj.set_field o) (Array.map reify xs);
   o
 
-module Pervasives = Malfunction_compat.Stdlib
-
 let check xs =
   Array.iter (fun a ->
-  Pervasives.print_char
-    (if Pervasives.(=) (Marshal.from_channel Pervasives.stdin) a then
+  Stdlib.print_char
+    (if Stdlib.(=) (Marshal.from_channel Stdlib.stdin) a then
         'Y'
      else
         'N')) xs;
-  Pervasives.flush_all ()
+  Stdlib.flush_all ()
 
 let check_stub = "
   (lambda ($xs)
@@ -157,18 +155,18 @@ let load_testcases_markdown filename =
   let dummy_loc =
     let l = Lexing.{pos_fname = filename; pos_lnum = 0; pos_cnum = 0; pos_bol = 0} in
     l,l in
-  let open Omd_representation in
+  let open Omd in
   let testcases = ref [] in
-  let _ = Omd.of_string contents |> visit @@ function
-    | Code_block (("test" | " test"), s) ->
+  let _ = Omd.of_string contents |> List.iter @@ function
+    | Code_block (_, ("test" | " test"), s) ->
        let open Str in
        let (test, expect) = match split (regexp "\n=>") s with
          | [t; e] -> (parse_string t, parse_string e)
          | _ -> failwith @@ "Cannot parse testcase " ^ s in
        testcases := (`Test, dummy_loc, test, expect) :: !testcases;
-       None
-    | _ ->
-       None in
+       ()
+    | _ -> ()
+  in
   List.rev !testcases
 
 let run_file parser filename =

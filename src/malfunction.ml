@@ -63,7 +63,7 @@ and binding =
 
 type var = Ident.t
 
-let fresh = Malfunction_compat.fresh
+let fresh = Ident.create_local
 
 let bind_val e body =
   let v = fresh "x" in
