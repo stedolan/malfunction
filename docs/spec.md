@@ -369,8 +369,8 @@ module path using `global`. For instance, the OCaml function
 
 As well as calling OCaml functions, certain OCaml values can be
 directly manipulated. The integer types `int`, `int32` and `int64`
-correspond to the OCaml types `int, `Int32.t` and `Int64.t`, OCaml
+correspond to the OCaml types `int`, `Int32.t` and `Int64.t`, OCaml
 tuples are blocks with tag 0, and OCaml algebraic data types are
 represented as a combination of ints and blocks as described in
 section
-[19.3.4 of the OCaml manual, "Concrete data types"](http://caml.inria.fr/pub/docs/manual-ocaml-4.00/manual033.html#htoc264).
+[19.3.4 of the OCaml manual, "Concrete data types"](https://v2.ocaml.org/manual/intfc.html#ss:c-concrete-datatypes).
