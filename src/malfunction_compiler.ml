@@ -626,7 +626,6 @@ and bindings_to_lambda env bindings body =
      Lletrec (List.map (fun (n, e) -> (n, to_lambda env e)) bs, rest))
     bindings body
 
-
 let setup_options options =
   Clflags.native_code := true;
   Clflags.flambda_invariant_checks := true;
@@ -638,7 +637,6 @@ let setup_options options =
   Clflags.inlining_report := false;
   Clflags.dlcode := true;
   Clflags.shared := false;
-
   Clflags.(
     default_simplify_rounds := 2;
     use_inlining_arguments_set o2_arguments;
@@ -660,7 +658,12 @@ let setup_options options =
      Clflags.inlining_report := true
       *)
   | `Shared ->
-     Clflags.shared := true);
+     Clflags.shared := true
+  | `Package s -> 
+     let packages = String.split_on_char ',' s in
+     let dirs = List.map Findlib.package_directory packages in
+     Clflags.include_dirs := dirs @ !Clflags.include_dirs
+  | `ForPack s -> Clflags.for_package := Some s);
 
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   compmisc_init_path ()
@@ -754,7 +757,7 @@ let delete_temps { objfile; cmxfile; cmifile } =
   match cmifile with Some f -> Misc.remove_file f | None -> ()
 
 
-type options = [`Verbose | `Shared] list
+type options = [`Verbose | `Shared | `ForPack of string | `Package of string] list
 
 
 let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lmod =

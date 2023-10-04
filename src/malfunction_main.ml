@@ -6,8 +6,9 @@ let usage () =
     "Malfunction v0.1. Usage:\n"^
     "   malfunction compile [-v] [-o output] input.mlf\n" ^
     "     Compile input.mlf to an executable\n\n" ^
-    "   malfunction cmx [-v] input.mlf\n" ^
-    "     Compile input.mlf to input.cmx, for linking with ocamlopt\n\n" ^
+    "   malfunction cmx [-v] [-shared] [-package pack1,...,packn] [-for-pack s] input.mlf\n" ^
+    "     Compile input.mlf to input.cmx, for linking with ocamlopt.\n"^
+    "     Package \"zarith\" is always included.\n\n" ^
     "   malfunction eval\n" ^
     "     Run a REPL to evaluate expressions with the interpreter\n\n" ^
     "   malfunction fmt\n" ^
@@ -64,6 +65,9 @@ let parse_args args =
   let rec parse_opts mode = function
     | "-v" :: rest -> opts := `Verbose :: !opts; parse_opts mode rest
     | "-o" :: o :: rest -> output := Some o; parse_opts mode rest
+    | "-shared" :: rest -> opts := `Shared :: !opts; parse_opts mode rest
+    | "-for-pack" :: o :: rest -> opts := `ForPack o :: !opts; parse_opts mode rest
+    | "-package" :: s :: rest -> opts := `Package s :: !opts; parse_opts mode rest
     | i :: rest ->
        (match !impl with None -> (impl := Some i; parse_opts mode rest) | _ -> usage ())
     | [] -> run mode !opts !impl !output in
