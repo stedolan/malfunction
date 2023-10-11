@@ -6,7 +6,7 @@ type outfiles = {
 }
 val delete_temps : outfiles -> unit 
 
-type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg | `Thread] list
+type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg | `Thread | `Optimize] list
 
 val compile_module :
   ?options:options ->

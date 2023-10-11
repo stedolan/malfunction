@@ -77,6 +77,7 @@ let parse_args args =
     | "-thread" :: rest -> 
         if mode = `Compile then (opts := `Thread :: !opts; parse_opts mode rest)
         else usage ()
+    | "-O2" :: rest -> opts := `Optimize :: !opts; parse_opts mode rest
     | i :: rest ->
        (match !impl with None -> (impl := Some i; parse_opts mode rest) | _ -> usage ())
     | [] -> run mode !opts !impl !output in
