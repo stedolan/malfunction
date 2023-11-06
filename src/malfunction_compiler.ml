@@ -433,12 +433,7 @@ let rec to_lambda env = function
             | None, Some e | Some e, None -> e
             | Some eint, Some etag ->
                Lifthenelse (lprim Pisint [scr], eint, etag)) in
-     (match cases with
-     | [[`Intrange (0, 0)], ezero; _, enonzero]
-     | [_, enonzero; [`Intrange (0, 0)], ezero] ->
-        (* special case comparisons with zero *)
-        Lifthenelse(scr, to_lambda env enonzero, to_lambda env ezero)
-     | cases -> flatten [] cases)
+     flatten [] cases
   | Mnumop1 (op, ty, e) ->
      let e = to_lambda env e in
      let ones32 = Const_base (Asttypes.Const_int32 (Int32.of_int (-1))) in
