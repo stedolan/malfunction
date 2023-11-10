@@ -224,7 +224,7 @@ let rec interpret locals env : t -> value = function
             interpret locals env e with
      | Vec (ty', vals), Int (`Int, i), v when ty = ty' ->
         let i = Z.to_int i in
-        if 0 <= i && i <= Array.length vals then begin
+        if 0 <= i && i < Array.length vals then begin
           (match ty, v with
           |  `Array, _ -> ()
           | `Bytevec, Int (`Int, i) when 0 <= Z.to_int i && Z.to_int i < 256 -> ()
