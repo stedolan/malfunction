@@ -660,7 +660,8 @@ let setup_options options =
      Clflags.include_dirs := dirs @ !Clflags.include_dirs
   | `ForPack s -> Clflags.for_package := Some s
   | `Dontlink _ -> ()
-  | `Linkpkg -> ());
+  | `Linkpkg -> ()
+  | `Thread -> ());
 
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   compmisc_init_path ()
@@ -754,7 +755,7 @@ let delete_temps { objfile; cmxfile; cmifile } =
   match cmifile with Some f -> Misc.remove_file f | None -> ()
 
 
-type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg] list
+type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg | `Thread] list
 
 
 let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lmod =
@@ -885,12 +886,19 @@ let link_executable ?options output tmpfiles =
       | `Dontlink s -> Some s
       | _ -> None)
    in
-   let pkgs = String.concat "," ("zarith" :: pkgs) in
+   let thread =
+      options |> (List.exists @@ 
+      function
+      | `Thread -> true
+      | _ -> false)
+   in
+   let pkgs = String.concat "," pkgs in
    let dontlink = 
       if dontlink = [] then ""
       else "-dontlink " ^ (String.concat "," dontlink)
    in
    let linkpkg = if linkpkg then "-linkpkg " else "" in
-  (* urgh *)
-  Sys.command (Printf.sprintf "ocamlfind ocamlopt %s -package %s %s zarith.cmxa '%s' -o '%s'"
-                 linkpkg pkgs dontlink tmpfiles.cmxfile output)
+   let thread = if thread then "-thread " else "" in
+   (* urgh *)
+   Sys.command (Printf.sprintf "ocamlfind ocamlopt %s %s -package %s %s '%s' -o '%s'"
+                 thread linkpkg pkgs dontlink tmpfiles.cmxfile output)

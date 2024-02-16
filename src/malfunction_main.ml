@@ -4,9 +4,8 @@ open Malfunction
 let usage () =
   Printf.fprintf stderr "%s" @@
     "Malfunction v0.1. Usage:\n"^
-    "   malfunction compile [-v] [-linkpkg] [-dontlink pack1,...,packn] [-package pack1,...packn] [-o output] input.mlf\n" ^
+    "   malfunction compile [-v] [-thread] [-linkpkg] [-dontlink pack1,...,packn] [-package pack1,...packn] [-o output] input.mlf\n" ^
     "     Compile input.mlf to an executable using ocamlfind\n" ^
-    "     Package \"zarith\" is always included and linked.\n\n" ^
     "   malfunction cmx [-v] [-shared] [-package pack1,...,packn] [-for-pack s] input.mlf\n" ^
     "     Compile input.mlf to input.cmx, for linking with ocamlopt.\n"^
     "     Package \"zarith\" is always included.\n\n" ^
@@ -75,6 +74,9 @@ let parse_args args =
     | "-linkpkg" :: rest -> 
       if mode = `Compile then (opts := `Linkpkg :: !opts; parse_opts mode rest)
       else usage ()
+    | "-thread" :: rest -> 
+        if mode = `Compile then (opts := `Thread :: !opts; parse_opts mode rest)
+        else usage ()
     | i :: rest ->
        (match !impl with None -> (impl := Some i; parse_opts mode rest) | _ -> usage ())
     | [] -> run mode !opts !impl !output in
