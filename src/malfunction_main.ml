@@ -4,8 +4,9 @@ open Malfunction
 let usage () =
   Printf.fprintf stderr "%s" @@
     "Malfunction v0.1. Usage:\n"^
-    "   malfunction compile [-v] [-o output] input.mlf\n" ^
-    "     Compile input.mlf to an executable\n\n" ^
+    "   malfunction compile [-v] [-linkpkg] [-dontlink pack1,...,packn] [-package pack1,...packn] [-o output] input.mlf\n" ^
+    "     Compile input.mlf to an executable using ocamlfind\n" ^
+    "     Package \"zarith\" is always included and linked.\n\n" ^
     "   malfunction cmx [-v] [-shared] [-package pack1,...,packn] [-for-pack s] input.mlf\n" ^
     "     Compile input.mlf to input.cmx, for linking with ocamlopt.\n"^
     "     Package \"zarith\" is always included.\n\n" ^
@@ -43,7 +44,7 @@ let run mode options impl output =
        let output = match output with
          | None -> Compenv.output_prefix file
          | Some out -> out in
-       let res = Malfunction_compiler.link_executable output tmpfiles in
+       let res = Malfunction_compiler.link_executable ~options output tmpfiles in
        Malfunction_compiler.delete_temps tmpfiles;
        res)
   | `Eval, Some _file ->
@@ -68,6 +69,12 @@ let parse_args args =
     | "-shared" :: rest -> opts := `Shared :: !opts; parse_opts mode rest
     | "-for-pack" :: o :: rest -> opts := `ForPack o :: !opts; parse_opts mode rest
     | "-package" :: s :: rest -> opts := `Package s :: !opts; parse_opts mode rest
+    | "-dontlink" :: s :: rest -> 
+      if mode = `Compile then (opts := `Dontlink s :: !opts; parse_opts mode rest)
+      else usage ()
+    | "-linkpkg" :: rest -> 
+      if mode = `Compile then (opts := `Linkpkg :: !opts; parse_opts mode rest)
+      else usage ()
     | i :: rest ->
        (match !impl with None -> (impl := Some i; parse_opts mode rest) | _ -> usage ())
     | [] -> run mode !opts !impl !output in

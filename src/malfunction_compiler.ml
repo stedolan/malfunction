@@ -658,7 +658,9 @@ let setup_options options =
      let packages = String.split_on_char ',' s in
      let dirs = List.map Findlib.package_directory packages in
      Clflags.include_dirs := dirs @ !Clflags.include_dirs
-  | `ForPack s -> Clflags.for_package := Some s);
+  | `ForPack s -> Clflags.for_package := Some s
+  | `Dontlink _ -> ()
+  | `Linkpkg -> ());
 
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   compmisc_init_path ()
@@ -752,7 +754,7 @@ let delete_temps { objfile; cmxfile; cmifile } =
   match cmifile with Some f -> Misc.remove_file f | None -> ()
 
 
-type options = [`Verbose | `Shared | `ForPack of string | `Package of string] list
+type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg] list
 
 
 let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lmod =
@@ -868,7 +870,27 @@ let compile_and_load ?(options : options =[]) e =
 
 
 
-let link_executable output tmpfiles =
+let link_executable ?options output tmpfiles =
+   let options = match options with Some l -> l | None -> [] in
+   let pkgs =
+      options |> (List.filter_map @@ 
+      function
+      | `Package s -> Some s
+      | _ -> None)
+   in
+   let linkpkg = options |> (List.exists @@ (function `Linkpkg -> true | _ -> false)) in
+   let dontlink =
+      options |> (List.filter_map @@ 
+      function
+      | `Dontlink s -> Some s
+      | _ -> None)
+   in
+   let pkgs = String.concat "," ("zarith" :: pkgs) in
+   let dontlink = 
+      if dontlink = [] then ""
+      else "-dontlink " ^ (String.concat "," dontlink)
+   in
+   let linkpkg = if linkpkg then "-linkpkg " else "" in
   (* urgh *)
-  Sys.command (Printf.sprintf "ocamlfind ocamlopt -package zarith zarith.cmxa '%s' -o '%s'"
-                 tmpfiles.cmxfile output)
+  Sys.command (Printf.sprintf "ocamlfind ocamlopt %s -package %s %s zarith.cmxa '%s' -o '%s'"
+                 linkpkg pkgs dontlink tmpfiles.cmxfile output)
