@@ -632,11 +632,9 @@ let setup_options options =
   Clflags.inlining_report := false;
   Clflags.dlcode := true;
   Clflags.shared := false;
-  Clflags.(
-    default_simplify_rounds := 2;
-    use_inlining_arguments_set o2_arguments;
-    use_inlining_arguments_set ~round:0 o1_arguments);
+  Clflags.(default_simplify_rounds := 0);
   (* FIXME: should we use classic_arguments for non-flambda builds? *)
+
 
   (* Hack: disable the "no cmx" warning for zarith *)
   let _ = Warnings.parse_options false "-58" in
@@ -646,11 +644,11 @@ let setup_options options =
   | `Verbose ->
      Clflags.dump_lambda := true;
      Clflags.dump_cmm := true;
+     Clflags.keep_asm_file := true;
+     Clflags.inlining_report := true
      (*
        If anyone wants to keep these, there should probably be another option for where to put them.
        (rather than leaving stale temporary directories around)
-     Clflags.keep_asm_file := true;
-     Clflags.inlining_report := true
       *)
   | `Shared ->
      Clflags.shared := true
@@ -658,7 +656,16 @@ let setup_options options =
      let packages = String.split_on_char ',' s in
      let dirs = List.map Findlib.package_directory packages in
      Clflags.include_dirs := dirs @ !Clflags.include_dirs
-  | `ForPack s -> Clflags.for_package := Some s);
+  | `ForPack s -> Clflags.for_package := Some s
+  | `Dontlink _ -> ()
+  | `Linkpkg -> ()
+  | `Thread -> ()
+  | `Optimize ->   Clflags.(
+    default_simplify_rounds := 2;
+    use_inlining_arguments_set o2_arguments;
+    use_inlining_arguments_set ~round:0 o1_arguments);
+   );
+  (* FIXME: should we use classic_arguments for non-flambda builds? *)
 
   Compenv.(readenv Format.std_formatter (Before_compile "malfunction"));
   compmisc_init_path ()
@@ -752,8 +759,7 @@ let delete_temps { objfile; cmxfile; cmifile } =
   match cmifile with Some f -> Misc.remove_file f | None -> ()
 
 
-type options = [`Verbose | `Shared | `ForPack of string | `Package of string] list
-
+type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg | `Thread | `Optimize] list
 
 let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lmod =
   let ppf = Format.std_formatter in
@@ -868,7 +874,34 @@ let compile_and_load ?(options : options =[]) e =
 
 
 
-let link_executable output tmpfiles =
-  (* urgh *)
-  Sys.command (Printf.sprintf "ocamlfind ocamlopt -package zarith zarith.cmxa '%s' -o '%s'"
-                 tmpfiles.cmxfile output)
+let link_executable ?options output tmpfiles =
+   let options = match options with Some l -> l | None -> [] in
+   let pkgs =
+      options |> (List.filter_map @@ 
+      function
+      | `Package s -> Some s
+      | _ -> None)
+   in
+   let linkpkg = options |> (List.exists @@ (function `Linkpkg -> true | _ -> false)) in
+   let dontlink =
+      options |> (List.filter_map @@ 
+      function
+      | `Dontlink s -> Some s
+      | _ -> None)
+   in
+   let thread =
+      options |> (List.exists @@ 
+      function
+      | `Thread -> true
+      | _ -> false)
+   in
+   let pkgs = String.concat "," pkgs in
+   let dontlink = 
+      if dontlink = [] then ""
+      else "-dontlink " ^ (String.concat "," dontlink)
+   in
+   let linkpkg = if linkpkg then "-linkpkg " else "" in
+   let thread = if thread then "-thread " else "" in
+   (* urgh *)
+   Sys.command (Printf.sprintf "ocamlfind ocamlopt %s %s -package %s %s '%s' -o '%s'"
+                 thread linkpkg pkgs dontlink tmpfiles.cmxfile output)
