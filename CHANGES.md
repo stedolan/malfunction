@@ -1,3 +1,10 @@
+v0.6 (23rd June 2024)
+---------------------
+
+Support for OCaml 5.2
+Bugfix for an invalid optimisation on OCaml >= 4.14
+New options for using ocamlfind packages
+
 v0.5 (22nd May 2023)
 --------------------
 
