@@ -618,7 +618,7 @@ and bindings_to_lambda env bindings body =
   | `Named (n, e) ->
      Llet (Strict, Pgenval, n, to_lambda env e, rest)
   | `Recursive bs ->
-     Lletrec (List.map (fun (n, e) -> (n, to_lambda env e)) bs, rest))
+     lletrec (List.map (fun (n, e) -> (n, to_lambda env e)) bs) rest)
     bindings body
 
 let setup_options options =
@@ -717,9 +717,9 @@ let module_to_lambda ?options ~module_name:_ ~module_id (Mmod (bindings, exports
            let stores = List.fold_right (fun x xs -> Lsequence (x, xs))
                           stores (Lconst Lambda.const_unit) in
            let lam =
-             Lletrec (bs |> List.map (fun (n, e) ->
-                                (n, Subst.apply subst (to_lambda env e))),
-                      stores) in
+             lletrec (bs |> List.map (fun (n, e) ->
+                                (n, Subst.apply subst (to_lambda env e))))
+                      stores in
            let id_load = ids |> List.mapi (fun i n -> (n, mod_load (pos + i))) in
            let subst = List.fold_left (fun subst (n, l) -> Subst.add n l subst) subst id_load in
            Lsequence (lam, transl_toplevel_bindings (pos + List.length ids) subst rest)
@@ -773,8 +773,8 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lm
     let cmi = module_name ^ ".cmi" in
     Env.set_unit_name module_name;
     Compilenv.reset ?packname:!Clflags.for_package module_name;
-    ignore (match Load_path.find_uncap cmi with
-        | file -> Env.read_signature module_name file
+    ignore (match load_path_find_uncap cmi with
+        | file -> env_read_signature ~module_name ~file
         | exception Not_found ->
            let chop_ext =
                Misc.chop_extensions
@@ -795,7 +795,7 @@ let lambda_to_cmx ?(options=[]) ~filename ~prefixname ~module_name ~module_id lm
              ignore (Sys.command ("ocamlc -c " ^ mlifile));
              Misc.remove_file mlifile;
              if not (Sys.file_exists cmifile) then failwith "Failed to generate empty cmi file";
-             Env.read_signature module_name cmifile);
+             env_read_signature ~module_name ~file:cmifile);
     (* FIXME: may need to add modules referenced only by "external" to this.
        See Translmod.primitive_declarations and its use in Asmgen. *)
     (* FIXME: Translprim.get_used_primitives (see translmod.ml)? *)
@@ -817,7 +817,7 @@ let compile_module ?(options=[]) ~filename modl =
     |> Filename.basename
     |> Filename.remove_extension
     |> String.capitalize_ascii in
-  if not (Compenv.is_unit_name module_name) then
+  if not (is_unit_name module_name) then
     raise (Invalid_argument ("Invalid module name " ^ module_name));
   let module_id = Ident.create_persistent module_name in
   modl

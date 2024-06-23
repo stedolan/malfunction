@@ -22,6 +22,9 @@ let lfunction params body =
     poll = Default_poll;
     tmc_candidate = false;
 #endif
+#if OCAML_VERSION >= (5, 2, 0)
+    may_fuse_arity = true;
+#endif
   } in
 #if OCAML_VERSION >= (4, 14, 0)
   lfunction
@@ -55,6 +58,14 @@ let lapply fn args =
     ap_inlined = Default_inline;
     ap_specialised = Default_specialise
   }
+
+let lletrec bindings body =
+#if OCAML_VERSION < (5, 2, 0)
+  Lletrec (bindings, body)
+#else
+  let bindings = List.map (fun (id, v) -> id, Value_rec_types.Static, v) bindings in
+  Value_rec_compiler.compile_letrec bindings body
+#endif
 
 let pfield ix =
 #if OCAML_VERSION < (5, 0, 0)
@@ -90,6 +101,13 @@ let simplify_lambda lam =
   Simplif.simplify_lambda lam
 #endif
 
+let load_path_find_uncap =
+#if OCAML_VERSION < (5, 2, 0)
+  Load_path.find_uncap
+#else
+  Load_path.find_normalized
+#endif
+
 let flambda_middle_end =
 #if OCAML_VERSION < (4, 09, 0)
   Middle_end.middle_end
@@ -108,6 +126,22 @@ let asmgen_compile_implementation_clambda ~backend =
 #else
   Asmgen.compile_implementation ?toplevel:None ~backend
     ~middle_end:Closure_middle_end.lambda_to_clambda
+#endif
+
+let env_read_signature ~module_name ~file =
+#if OCAML_VERSION < (5, 2, 0)
+  Env.read_signature module_name file
+#else
+  let a = Unit_info.Artifact.from_filename file in
+  assert (Unit_info.Artifact.modname a = module_name);
+  Env.read_signature a
+#endif
+
+let is_unit_name name =
+#if OCAML_VERSION < (5, 2, 0)
+  Compenv.is_unit_name name
+#else
+  Unit_info.is_unit_name name
 #endif
 
 let compile_implementation
