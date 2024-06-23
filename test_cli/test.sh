@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 > test.expect
 > test.log
@@ -12,22 +12,22 @@ ignore_linker_warnings () {
   grep -v 'ld:.* warning:'
 }
 
-malfunction compile helloworld.mlf |& ignore_linker_warnings
+malfunction compile helloworld.mlf 2>&1 | ignore_linker_warnings
 ./helloworld
 expect 'Hello, world!'
 
-malfunction compile -o foo helloworld.mlf |& ignore_linker_warnings
+malfunction compile -o foo helloworld.mlf 2>&1 | ignore_linker_warnings
 ./foo
 expect 'Hello, world!'
 
 malfunction cmx helloworld.mlf
-ocamlopt helloworld.cmx -o exec |& ignore_linker_warnings
+ocamlopt helloworld.cmx -o exec 2>&1 | ignore_linker_warnings
 ./exec
 expect 'Hello, world!'
 
 ocamlc -opaque -c module.mli
 malfunction cmx module.mlf
-ocamlopt module.cmx main.ml -o main |& ignore_linker_warnings
+ocamlopt module.cmx main.ml -o main 2>&1 | ignore_linker_warnings
 ./main
 expect_ <<EOF
 42

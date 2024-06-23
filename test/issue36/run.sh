@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ocamlopt -c test_bytestring.mli
 malfunction cmx test_bytestring.mlf
 ocamlopt -c main.ml
