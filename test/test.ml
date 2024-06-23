@@ -76,11 +76,12 @@ let try_run_tests cases =
     Misc.remove_file exec_name;
     match !temps with Some t -> Malfunction_compiler.delete_temps t | None -> () in
 
+  let options = [`Package "zarith"; `Linkpkg] in
   begin match
     Mmod ([`Unnamed (Mapply (checker, [Mblock (0, testcases)]))], [])
-    |> Malfunction_compiler.compile_module ~filename:exec_name
+    |> Malfunction_compiler.compile_module ~options ~filename:exec_name
     |> (fun t -> temps := Some t; t)
-    |> Malfunction_compiler.link_executable exec_name
+    |> Malfunction_compiler.link_executable ~options exec_name
   with
   | 0 -> ()
   | _ -> delete_temps (); raise (HarnessFailed "Link error")

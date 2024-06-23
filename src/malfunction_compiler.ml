@@ -895,13 +895,17 @@ let link_executable ?options output tmpfiles =
       | `Thread -> true
       | _ -> false)
    in
-   let pkgs = String.concat "," pkgs in
+   let pkgs =
+     match pkgs with
+     | [] -> []
+     | pkgs -> ["-package"; String.concat "," pkgs] in
    let dontlink = 
-      if dontlink = [] then ""
-      else "-dontlink " ^ (String.concat "," dontlink)
+      if dontlink = [] then []
+      else ["-dontlink"; String.concat "," dontlink]
    in
-   let linkpkg = if linkpkg then "-linkpkg " else "" in
-   let thread = if thread then "-thread " else "" in
+   let linkpkg = if linkpkg then ["-linkpkg"] else [] in
+   let thread = if thread then ["-thread"] else [] in
+   let opts = String.concat " " (thread @ linkpkg @ pkgs @ dontlink) in
    (* urgh *)
-   Sys.command (Printf.sprintf "ocamlfind ocamlopt %s %s -package %s %s '%s' -o '%s'"
-                 thread linkpkg pkgs dontlink tmpfiles.cmxfile output)
+   Sys.command (Printf.sprintf "ocamlfind ocamlopt %s '%s' -o '%s'"
+                 opts tmpfiles.cmxfile output)

@@ -8,7 +8,6 @@ let usage () =
     "     Compile input.mlf to an executable using ocamlfind\n" ^
     "   malfunction cmx [-v] [-shared] [-package pack1,...,packn] [-for-pack s] input.mlf\n" ^
     "     Compile input.mlf to input.cmx, for linking with ocamlopt.\n"^
-    "     Package \"zarith\" is always included.\n\n" ^
     "   malfunction eval\n" ^
     "     Run a REPL to evaluate expressions with the interpreter\n\n" ^
     "   malfunction fmt\n" ^
