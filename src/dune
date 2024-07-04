@@ -15,7 +15,7 @@
 (library
  (name malfunction)
  (public_name malfunction)
- (libraries compiler-libs.optcomp str zarith findlib dynlink unix)
+ (libraries compiler-libs.optcomp compiler-libs.bytecomp str zarith findlib dynlink unix)
  (wrapped false)
  (modes native)
  (modules (:standard \ malfunction_main)))

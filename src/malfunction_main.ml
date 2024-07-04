@@ -8,6 +8,8 @@ let usage () =
     "     Compile input.mlf to an executable using ocamlfind\n" ^
     "   malfunction cmx [-v] [-shared] [-package pack1,...,packn] [-for-pack s] input.mlf\n" ^
     "     Compile input.mlf to input.cmx, for linking with ocamlopt.\n"^
+    "   malfunction cmo [-v] [-shared] [-package pack1,...,packn] [-for-pack s] input.mlf\n" ^
+    "     Compile input.mlf to input.cmo (bytecode), for linking with ocamlc.\n" ^
     "   malfunction eval\n" ^
     "     Run a REPL to evaluate expressions with the interpreter\n\n" ^
     "   malfunction fmt\n" ^
@@ -35,6 +37,10 @@ let run mode options impl output =
   | `Cmx, Some file ->
      with_error_reporting Format.std_formatter 1 (fun () ->
        let _ = Malfunction_compiler.compile_cmx ~options file in
+       0)
+  | `Cmo, Some file ->
+     with_error_reporting Format.std_formatter 1 (fun () ->
+       let _ = Malfunction_compiler.compile_cmo ~options file in
        0)
   | `Compile, Some file ->
      with_error_reporting Format.std_formatter 1 (fun () ->
@@ -82,6 +88,7 @@ let parse_args args =
     | [] -> run mode !opts !impl !output in
   match args with
   | "cmx" :: rest -> parse_opts `Cmx rest
+  | "cmo" :: rest -> parse_opts `Cmo rest
   | "compile" :: rest -> parse_opts `Compile rest
   | "eval" :: rest -> parse_opts `Eval rest
   | "fmt" :: rest -> parse_opts `Fmt rest
