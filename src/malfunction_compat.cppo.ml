@@ -144,6 +144,15 @@ let is_unit_name name =
   Unit_info.is_unit_name name
 #endif
 
+let emit_bytecode_to_file oc module_name cmofile ~required_globals bc =
+#if OCAML_VERSION < (5, 2, 0)
+  Emitcode.to_file oc module_name cmofile ~required_globals bc
+#else
+  let a = Unit_info.Artifact.from_filename cmofile in
+  assert (Unit_info.Artifact.modname a = module_name);
+  Emitcode.to_file oc a ~required_globals bc
+#endif
+
 let compile_implementation
   ~prefixname ~filename ~module_id ~backend ~required_globals ~ppf (size, code) =
 #if OCAML_VERSION < (4,10,0)
