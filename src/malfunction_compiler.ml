@@ -795,7 +795,7 @@ let lambda_to_cmx ~options ~filename ~prefixname ~module_name ~module_id lmod =
   let outfiles = ref [objfile] in
   setup_options options;
   try
-    Env.set_unit_name module_name;
+    env_set_unit_name ~filename ~prefixname ~module_name;
     let _, cmifile = ensure_cmi ~module_name ~filename in
     outfiles := Option.to_list cmifile @ !outfiles;
     (* FIXME: may need to add modules referenced only by "external" to this.
@@ -816,7 +816,7 @@ let lambda_to_cmo ~options ~filename ~prefixname ~module_name ~module_id (_size,
   let outfiles = ref [] in
   setup_options options;
   try
-    Env.set_unit_name module_name;
+    env_set_unit_name ~filename ~prefixname ~module_name;
     let _, cmifile = ensure_cmi ~module_name ~filename in
     outfiles := Option.to_list cmifile @ !outfiles;
     (* FIXME: may need to add modules referenced only by "external" to this.

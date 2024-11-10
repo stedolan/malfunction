@@ -144,6 +144,16 @@ let is_unit_name name =
   Unit_info.is_unit_name name
 #endif
 
+let env_set_unit_name ~filename ~prefixname ~module_name =
+#if OCAML_VERSION < (5, 3, 0)
+  ignore (filename, prefixname);
+  Env.set_unit_name module_name
+#else
+  ignore module_name;
+  let info = Unit_info.make ~source_file:filename Impl prefixname in
+  Env.set_current_unit info
+#endif
+
 let emit_bytecode_to_file oc module_name cmofile ~required_globals bc =
 #if OCAML_VERSION < (5, 2, 0)
   Emitcode.to_file oc module_name cmofile ~required_globals bc
