@@ -1,3 +1,9 @@
+v0.7 (10th November 2024)
+---------------------
+
+Support for OCaml 5.3
+Bytecode compilation mode (to cmo files)
+
 v0.6 (23rd June 2024)
 ---------------------
 
