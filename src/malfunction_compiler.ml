@@ -303,6 +303,7 @@ end
 type global_value =
   | Glob_val of lambda
   | Glob_prim of Primitive.description
+  | Identity
 
 let lookup env v =
   let open Types in
@@ -321,18 +322,26 @@ let lookup env v =
   match descr.val_kind with
   | Val_reg -> Glob_val (transl_value_path loc_none env path)
   | Val_prim(p) ->
-     let p = match p.prim_name with
-       | "%equal" ->
-          Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true
-       | "%compare" ->
-          Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true
-       | s when s.[0] = '%' ->
-          failwith ("unimplemented primitive " ^ p.prim_name);
-       | _ ->
-          p in
-     Glob_prim p
+     (match p.prim_name with
+     | "%equal" ->
+        Glob_prim (Primitive.simple ~name:"caml_equal" ~arity:2 ~alloc:true)
+     | "%compare" ->
+        Glob_prim (Primitive.simple ~name:"caml_compare" ~arity:2 ~alloc:true)
+     | "%identity" ->
+        Identity
+     | s when s.[0] = '%' ->
+        failwith ("unimplemented primitive " ^ p.prim_name);
+     | _ ->
+        Glob_prim p)
   | _ -> failwith "unexpected kind of value"
 
+
+let identity_to_lambda args =
+  match args with
+  | [] ->
+     let param = fresh "prim" in
+     lfunction [param] (Lvar param)
+  | fn :: args -> lapply fn args
 
 let builtin env path args =
   let p = match path with
@@ -346,6 +355,9 @@ let builtin env path args =
   | Glob_prim p ->
      assert (p.prim_arity = List.length args);
      lprim (Pccall p) args
+  | Identity ->
+     identity_to_lambda args
+
 
 let global_to_lambda = function
   | Glob_val v -> v
@@ -357,6 +369,7 @@ let global_to_lambda = function
      let params = make_params p.prim_arity in
      let body = lprim (Pccall p) (List.map (fun x -> Lvar x) params) in
      lfunction params body
+  | Identity -> identity_to_lambda []
 
 let rec to_lambda env = function
   | Mvar v ->
@@ -370,8 +383,8 @@ let rec to_lambda env = function
         (match lookup env v with
         | Glob_prim p when p.prim_arity = List.length args ->
            lprim (Pccall p) (List.map (to_lambda env) args)
-        | g ->
-           ap_func (global_to_lambda g))
+        | Identity -> identity_to_lambda (List.map (to_lambda env) args)
+        | g -> ap_func (global_to_lambda g))
      | fn ->
         ap_func (to_lambda env fn))
   | Mlet (bindings, body) ->
