@@ -821,8 +821,9 @@ let lambda_to_cmx ~options ~filename ~prefixname ~module_name ~module_id lmod =
     Warnings.check_fatal ();
     Out_native {cmxfile; rest = !outfiles}
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     delete_temps (Out_native {cmxfile; rest = !outfiles});
-    raise e
+    Printexc.raise_with_backtrace e bt
 
 let lambda_to_cmo ~options ~filename ~prefixname ~module_name ~module_id (_size, lambda) =
   let cmofile = prefixname ^ ".cmo" in

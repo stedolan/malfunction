@@ -23,7 +23,9 @@ let rec reify = function
 
 and reify_block n xs =
   let o = Obj.new_block n (Array.length xs) in
-  Array.iteri (Obj.set_field o) (Array.map reify xs);
+  for i = 0 to Array.length xs - 1 do
+    Obj.set_field o i (reify xs.(i))
+  done;
   o
 
 let check xs =
