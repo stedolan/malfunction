@@ -341,6 +341,7 @@ let identity_to_lambda args =
   | [] ->
      let param = fresh "prim" in
      lfunction [param] (Lvar param)
+  | [x] -> x
   | fn :: args -> lapply fn args
 
 let builtin env path args =
