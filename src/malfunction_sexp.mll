@@ -37,7 +37,7 @@ let letter = ['a'-'z' 'A'-'Z' '_']
 let digit = ['0' - '9']
 
 let atom = (letter | digit | symbol)*
-let var = (['a'-'z' 'A'-'Z' '_' '0'-'9' '$'] | symbol)+
+let var = (['a'-'z' 'A'-'Z' '_' '0'-'9' '$' '\''] | symbol)+
 
 let string = '"' ([^ '\\' '"']* | ('\\' _))* '"'
 
