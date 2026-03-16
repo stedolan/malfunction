@@ -2,7 +2,7 @@
 type outfiles
 val delete_temps : outfiles -> unit 
 
-type options = [`Verbose | `Shared | `ForPack of string | `Package of string | `Dontlink of string | `Linkpkg | `Thread | `Optimize | `Bytecode] list
+type options = [`Verbose | `Shared | `ForPack of string | `Include of string | `Package of string | `Dontlink of string | `Linkpkg | `Debug | `Thread | `Optimize | `Bytecode] list
 
 val compile_module :
   ?options:options ->

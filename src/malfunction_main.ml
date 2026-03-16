@@ -72,6 +72,7 @@ let parse_args args =
     | "-o" :: o :: rest -> output := Some o; parse_opts mode rest
     | "-shared" :: rest -> opts := `Shared :: !opts; parse_opts mode rest
     | "-for-pack" :: o :: rest -> opts := `ForPack o :: !opts; parse_opts mode rest
+    | "-I" :: s :: rest -> opts := `Include s :: !opts; parse_opts mode rest
     | "-package" :: s :: rest -> opts := `Package s :: !opts; parse_opts mode rest
     | "-dontlink" :: s :: rest -> 
       if mode = `Compile then (opts := `Dontlink s :: !opts; parse_opts mode rest)
@@ -79,6 +80,7 @@ let parse_args args =
     | "-linkpkg" :: rest -> 
       if mode = `Compile then (opts := `Linkpkg :: !opts; parse_opts mode rest)
       else usage ()
+    | "-g" :: rest -> opts := `Debug :: !opts; parse_opts mode rest
     | "-thread" :: rest -> 
         if mode = `Compile then (opts := `Thread :: !opts; parse_opts mode rest)
         else usage ()
